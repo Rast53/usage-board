@@ -31,8 +31,8 @@ except Exception:  # pragma: no cover
     socks = None
     SocksiPyHandler = None
 
-DATA_DIR = Path(os.environ.get("USAGE_DATA_DIR", "/opt/usage-dashboard/data"))
-STATIC_DIR = Path(os.environ.get("USAGE_STATIC_DIR", "/opt/usage-dashboard/static"))
+DATA_DIR = Path(os.environ.get("USAGE_DATA_DIR", "/opt/usage-board/data"))
+STATIC_DIR = Path(os.environ.get("USAGE_STATIC_DIR", "/opt/usage-board/static"))
 SNAPSHOT_PATH = DATA_DIR / "snapshots.jsonl"
 STATE_PATH = DATA_DIR / "state.json"
 QUOTA_CACHE_PATH = DATA_DIR / "quota_cache.json"

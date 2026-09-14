@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # usage-board: one-shot TLS activation (after the DNS A record exists).
-# Run on fornex-usa: bash enable-tls.sh
+# Usage: DOMAIN=usage.example.com UPSTREAM=127.0.0.1:8080 bash enable-tls.sh
 # Idempotent-ish: safe to re-run (certbot webroot, nginx reload at the end).
 set -euo pipefail
 
-DOMAIN=usage.ohera.ru
-UPSTREAM=127.0.0.1:8090
+DOMAIN="${DOMAIN:?Set DOMAIN (e.g. usage.example.com)}"
+UPSTREAM="${UPSTREAM:-127.0.0.1:8080}"
 CONF=/etc/nginx/sites-available/${DOMAIN}.conf
 LE_DIR=/etc/letsencrypt/live/${DOMAIN}
 
