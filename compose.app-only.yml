@@ -1,17 +1,28 @@
 # usage-board — app-only deployment (behind YOUR OWN reverse proxy).
-# Single-file compose: the app published on APP_PORT (default 8080),
-# no Caddy, no TLS — terminate it (and basic auth if you like) at your proxy.
+# Single-file compose: the app published on APP_PORT (default 8080), no Caddy/TLS.
 #
-#   1) cp .env.example .env    2) set provider keys (+ BASIC_AUTH_* if the proxy won't do auth)
-#   3) docker compose -f compose.app-only.yml up -d
-#
-# Merged equivalent of: docker-compose.yml + docker-compose.app-only.yml
+# Env delivery: variables come from the runner environment (a Dockhand/hawser
+# agent passes its stack env via --env-file; locally `export` them or keep a
+# .env next to this file — compose reads it for interpolation automatically).
+# Secrets are NEVER committed to the repo.
 services:
   app:
     image: ghcr.io/rast53/usage-board:latest
     restart: unless-stopped
-    env_file: .env
     environment:
+      DOMAIN: ${DOMAIN:-}
+      BASIC_AUTH_USER: ${BASIC_AUTH_USER:-}
+      BASIC_AUTH_PASSWORD: ${BASIC_AUTH_PASSWORD:-}
+      USAGE_POLL_SECONDS: ${USAGE_POLL_SECONDS:-900}
+      SITE_TITLE: ${SITE_TITLE:-}
+      DISPLAY_TZ: ${DISPLAY_TZ:-Europe/Moscow}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      COMMANDCODE_API_KEY: ${COMMANDCODE_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MANAGEMENT_KEY: ${OPENROUTER_MANAGEMENT_KEY:-}
+      OPENCODE_GO_API_KEY: ${OPENCODE_GO_API_KEY:-}
+      KIMI_API_KEY: ${KIMI_API_KEY:-}
+      ZAI_API_KEY: ${ZAI_API_KEY:-}
       USAGE_PORT: "3210"
       USAGE_DATA_DIR: /app/data
       USAGE_STATIC_DIR: /app/static
