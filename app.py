@@ -1845,7 +1845,7 @@ def build_openrouter_wallet(or_probe: dict[str, Any] | None) -> dict[str, Any] |
 
 
 def get_zai_proxy() -> str | None:
-    """HTTP CONNECT or SOCKS5/SOCKS5h for api.z.ai (docker-egress on tw-msk)."""
+    """HTTP CONNECT or SOCKS5/SOCKS5h proxy for api.z.ai (optional)."""
     raw = os.environ.get("ZAI_PROXY", "").strip()
     return raw or None
 
@@ -2093,7 +2093,7 @@ def build_zai_wallet(probe: dict[str, Any] | None) -> dict[str, Any] | None:
 
 
 def get_commandcode_proxy() -> str | None:
-    """HTTP CONNECT or SOCKS5/SOCKS5h for api.commandcode.ai (optional tw-msk egress)."""
+    """HTTP CONNECT or SOCKS5/SOCKS5h proxy for api.commandcode.ai (optional)."""
     raw = os.environ.get("COMMANDCODE_PROXY", "").strip()
     return raw or None
 
@@ -2736,7 +2736,7 @@ def probe_commandcode_credits() -> dict[str, Any]:
 
     Primary: GET https://api.commandcode.ai/alpha/billing/credits (Bearer Provider key).
     Optional: GET .../alpha/billing/subscriptions for planId / billing period.
-    Cookie /internal/billing/* is not used (session, not Dockhand secret).
+    Cookie /internal/billing/* is not used (session cookie, not an API key).
     """
     key = get_commandcode_api_key()
     result: dict[str, Any] = {
@@ -2919,7 +2919,7 @@ def build_commandcode_wallet(probe: dict[str, Any] | None) -> dict[str, Any] | N
 
 
 def get_kimi_proxy() -> str | None:
-    """HTTP CONNECT or SOCKS5/SOCKS5h for api.kimi.com (optional tw-msk egress)."""
+    """HTTP CONNECT or SOCKS5/SOCKS5h proxy for api.kimi.com (optional)."""
     for name in ("KIMI_PROXY", "KIMI_CODE_PROXY"):
         raw = os.environ.get(name, "").strip()
         if raw:
@@ -3167,7 +3167,7 @@ def build_kimi_wallet(probe: dict[str, Any] | None) -> dict[str, Any] | None:
 
 
 def get_opencode_go_proxy() -> str | None:
-    """HTTP CONNECT or SOCKS5/SOCKS5h for opencode.ai (optional tw-msk egress)."""
+    """HTTP CONNECT or SOCKS5/SOCKS5h proxy for opencode.ai (optional)."""
     for name in ("OPENCODE_GO_PROXY", "OPENCODE_PROXY"):
         raw = os.environ.get(name, "").strip()
         if raw:
