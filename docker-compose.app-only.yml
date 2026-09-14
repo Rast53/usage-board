@@ -1,0 +1,15 @@
+# App-only overlay: run usage-board behind YOUR OWN reverse proxy
+# (nginx/traefik/whatever already owns 80/443 on this host).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.app-only.yml up -d
+#
+# Result: Caddy is disabled, the app is published on APP_PORT (default 8080).
+# Terminate TLS and auth at your proxy — or set BASIC_AUTH_* in .env anyway.
+services:
+  app:
+    ports: !override
+      - "${APP_PORT:-8080}:3210"
+
+  caddy:
+    deploy:
+      replicas: 0

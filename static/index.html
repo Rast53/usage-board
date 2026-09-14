@@ -1,0 +1,1289 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Мои подписки · usage-board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0b0f14;
+    --card: #121821;
+    --border: #243041;
+    --text: #e6edf3;
+    --muted: #8b9bb0;
+    --accent: #6cb6ff;
+    --green: #3fb950;
+    --red: #f85149;
+    --yellow: #d29922;
+    --chip: #1a2330;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: radial-gradient(1200px 600px at 20% -10%, #152033 0%, var(--bg) 55%);
+    color: var(--text);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 28px 20px 48px; }
+  header {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 12px; margin-bottom: 22px; flex-wrap: nowrap;
+  }
+  h1 { margin: 0; font-size: 26px; letter-spacing: -0.03em; font-weight: 750; }
+  .sub { color: var(--muted); margin-top: 4px; font-size: 13px; }
+  button {
+    background: var(--card); color: var(--text); border: 1px solid var(--border);
+    border-radius: 10px; padding: 9px 16px; cursor: pointer; font-size: 14px;
+    font-family: inherit; transition: border-color 0.15s;
+  }
+  button:hover { border-color: var(--accent); }
+  .btn-refresh {
+    flex-shrink: 0; padding: 5px 10px; font-size: 12px; border-radius: 8px;
+    white-space: nowrap; align-self: center;
+  }
+  .btn-refresh:disabled { opacity: 0.6; cursor: default; }
+  .btn-refresh .ric { display: inline-block; margin-right: 4px; }
+  .btn-refresh.loading .ric { animation: rf-spin 0.8s linear infinite; }
+  @keyframes rf-spin { to { transform: rotate(360deg); } }
+  .err {
+    background: rgba(248,81,73,0.08); border: 1px solid rgba(248,81,73,0.25);
+    color: #ffb4af; border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; font-size: 13px;
+  }
+  .stats {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 12px; margin-bottom: 22px;
+  }
+  .pace-panel {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 16px; padding: 14px 16px 12px; margin-bottom: 22px;
+  }
+  .pace-caption { font-size: 11px; color: var(--muted); margin: 0 0 12px; }
+  .pace-plots {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+  }
+  .pace-plot { min-width: 0; }
+  .pace-plot-title {
+    font-size: 12px; font-weight: 650; margin: 0 0 8px; letter-spacing: -0.01em;
+  }
+  .pace-svg { width: 100%; height: auto; display: block; }
+  .pace-reset { font-size: 11px; color: var(--muted); margin-top: 8px; }
+  .pace-legend { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .pace-row {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px;
+  }
+  .pace-swatch {
+    width: 8px; height: 8px; border-radius: 99px; flex: 0 0 auto;
+  }
+  .pace-used { font-family: var(--mono); font-size: 12px; }
+  .pace-stale { font-size: 11px; color: var(--yellow); }
+  .pace-empty { color: var(--muted); font-size: 13px; padding: 8px 0; }
+  .pace-note { font-size: 12px; color: var(--muted); margin-top: 10px; }
+  .pace-pill {
+    display: inline-block; border-radius: 999px; padding: 2px 10px;
+    font-size: 11px; font-weight: 600; border: 1px solid var(--border);
+    cursor: help;
+  }
+  .pace-pill.ok { color: var(--green); border-color: rgba(63,185,80,0.35); background: rgba(63,185,80,0.08); }
+  .pace-pill.warn { color: var(--yellow); border-color: rgba(210,153,34,0.35); background: rgba(210,153,34,0.08); }
+  .pace-pill.danger { color: var(--red); border-color: rgba(248,81,73,0.35); background: rgba(248,81,73,0.08); }
+  .stat-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 14px 16px;
+  }
+  .stat-card.critical { border-color: rgba(248,81,73,0.4); }
+  .stat-k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .stat-v { font-size: 24px; font-weight: 700; margin-top: 4px; letter-spacing: -0.03em; font-family: var(--mono); }
+  .stat-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .section-label {
+    color: var(--muted); font-size: 12px; text-transform: uppercase;
+    letter-spacing: 0.04em; margin: 0 0 10px;
+  }
+  .card-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 12px; margin-bottom: 28px;
+  }
+  .pcard {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 16px; padding: 16px 16px 12px;
+    transition: border-color 0.15s;
+  }
+  .pcard.prov-zai { background: linear-gradient(165deg, rgba(139,92,246,0.28) 0%, var(--card) 46%); }
+  .pcard.prov-commandcode { background: linear-gradient(165deg, rgba(245,158,11,0.26) 0%, var(--card) 46%); }
+  .pcard.prov-kimi { background: linear-gradient(165deg, rgba(249,115,22,0.26) 0%, var(--card) 46%); }
+  .pcard.prov-opencode-go { background: linear-gradient(165deg, rgba(34,211,238,0.24) 0%, var(--card) 46%); }
+  .pcard.prov-deepseek { background: linear-gradient(165deg, rgba(59,130,246,0.28) 0%, var(--card) 46%); }
+  .pcard.prov-openrouter { background: linear-gradient(165deg, rgba(16,185,129,0.26) 0%, var(--card) 46%); }
+  .pcard.critical { border-color: rgba(248,81,73,0.45); }
+  .pcard.warn { border-color: rgba(210,153,34,0.45); }
+  .pcard.ok { border-color: var(--border); }
+  .pcard-head {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 8px; gap: 8px;
+  }
+  .pcard-title { font-weight: 650; font-size: 14px; letter-spacing: -0.01em; }
+  .head-badges { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .badge {
+    display: inline-block; border-radius: 999px; padding: 2px 10px;
+    font-size: 11px; font-weight: 600; border: 1px solid var(--border);
+  }
+  .badge.ok { color: var(--green); border-color: rgba(63,185,80,0.35); background: rgba(63,185,80,0.08); }
+  .badge.warn { color: var(--yellow); border-color: rgba(210,153,34,0.35); background: rgba(210,153,34,0.08); }
+  .badge.bad { color: var(--red); border-color: rgba(248,81,73,0.35); background: rgba(248,81,73,0.08); }
+  .badge.plan { color: var(--text); background: rgba(255,255,255,0.06); }
+  .muted { color: var(--muted); }
+  .ok-text { color: var(--green); }
+  .bad-text { color: var(--red); }
+  .warn-text { color: var(--yellow); }
+  .hero { margin: 4px 0 2px; }
+  .hero-val {
+    font-size: 34px; font-weight: 800; letter-spacing: -0.04em; line-height: 1.05;
+    font-family: var(--mono);
+  }
+  .hero-cap { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .delta-row {
+    display: flex; align-items: center; gap: 8px;
+    flex-wrap: wrap; margin: 12px 0 14px;
+  }
+  .chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    border-radius: 999px; padding: 4px 10px;
+    font-size: 11px; font-weight: 600; background: var(--chip);
+    border: 1px solid var(--border); font-family: var(--mono);
+  }
+  .chip-empty { color: var(--muted); font-weight: 500; }
+  .chip-partial { color: var(--yellow); }
+  .spark { color: var(--accent); margin-left: auto; flex: 0 0 auto; }
+  .allot { margin-bottom: 10px; }
+  .allot-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .allot-label { font-size: 11px; color: var(--muted); }
+  .allot-pct { font-size: 12px; font-weight: 650; font-family: var(--mono); }
+  .bar {
+    height: 6px; background: #1b2430; border-radius: 999px; overflow: hidden;
+    margin: 5px 0 4px;
+  }
+  .bar > span { display: block; height: 100%; border-radius: 999px; }
+  .bar.ok > span { background: linear-gradient(90deg, #3fb950, #6cb6ff); }
+  .bar.warn > span { background: #d29922; }
+  .bar.bad > span { background: linear-gradient(90deg, #f85149, #ff7b72); }
+  .bar-sub { font-size: 11px; color: var(--muted); }
+  .details-toggle {
+    font-size: 11px; color: var(--accent); cursor: pointer; margin-top: 10px;
+    border-top: 1px solid var(--border); padding-top: 8px;
+    user-select: none;
+  }
+  .details-toggle:hover { color: #8ec8ff; }
+  .details-body { display: none; margin-top: 10px; }
+  .pcard[data-expanded="true"] .details-body { display: block; }
+  .pcard[data-expanded="true"] .details-toggle::before { content: '▴ свернуть'; }
+  .pcard[data-expanded="false"] .details-toggle::before { content: '▾ детали'; }
+  .details-section {
+    font-size: 10px; color: var(--muted); text-transform: uppercase;
+    letter-spacing: 0.04em; margin: 10px 0 6px;
+  }
+  .details-row {
+    display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 3px; gap: 12px;
+  }
+  .details-mono {
+    font-size: 11px; color: #b7c6d8; line-height: 1.7;
+    font-family: var(--mono);
+  }
+  .details-src { font-size: 10px; color: #3d4f66; margin-top: 8px; }
+  .models-block { margin-top: 8px; }
+  .table-wrap {
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    border: 1px solid var(--border); border-radius: 14px;
+    background: var(--card);
+  }
+  table.models {
+    width: 100%; min-width: 520px; border-collapse: collapse;
+    font-size: 13px;
+  }
+  table.models th, table.models td {
+    padding: 10px 14px; border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  table.models th {
+    text-align: left; color: var(--muted); font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  table.models th.num, table.models td.num {
+    text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums;
+  }
+  table.models td.model { font-family: var(--mono); font-size: 12px; }
+  table.models tr:last-child td { border-bottom: 0; }
+  .models-note { font-size: 12px; color: var(--muted); padding: 12px 14px; }
+  @media (max-width: 699px) {
+    .pace-plots { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 720px) {
+    .wrap { padding: 18px 12px 36px; }
+    .stats { grid-template-columns: 1fr 1fr; }
+    .card-grid { grid-template-columns: 1fr; }
+    h1 { font-size: 22px; }
+    .hero-val { font-size: 30px; }
+  }
+  @media (max-width: 390px) {
+    .wrap { padding: 14px 10px 32px; }
+    .card-grid { grid-template-columns: 1fr; }
+    .hero-val { font-size: 28px; }
+    .stats { gap: 8px; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>Мои подписки</h1>
+        <div class="sub" id="updated">обновлено: —</div>
+      </div>
+      <button id="refresh-btn" class="btn-refresh" onclick="refresh()" title="Обновить данные"><span class="ric">⟳</span><span class="rlabel">Обновить</span></button>
+    </header>
+
+    <div id="errors"></div>
+    <div class="stats" id="stats"></div>
+
+    <div class="section-label">Темп квот</div>
+    <div id="pace"></div>
+
+    <div class="section-label">Провайдеры</div>
+    <div class="card-grid" id="providers"></div>
+
+    <div class="section-label" id="models-label">По моделям · OpenRouter · 7д</div>
+    <div class="models-block" id="models"></div>
+  </div>
+
+<script>
+/* ── Utilities ── */
+function fmt(n) {
+  if (n == null || n === '') return '—';
+  const x = Number(n);
+  if (Number.isNaN(x)) return String(n);
+  return x.toLocaleString('ru-RU');
+}
+function pad(n) { return String(n).padStart(2, '0'); }
+let displayTz = 'UTC';
+let displayTzLabel = 'UTC';
+let hidePartialSpendChips = false;
+function parseDate(v) {
+  if (!v) return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+function tzParts(d) {
+  const fmt = new Intl.DateTimeFormat('en-GB', {
+    timeZone: displayTz,
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+    hour12: false
+  });
+  const map = {};
+  fmt.formatToParts(d).forEach(function(p) { map[p.type] = p.value; });
+  return map;
+}
+function fmtDateShort(v) {
+  const d = parseDate(v);
+  if (!d) return v || '—';
+  if (displayTz === 'UTC') {
+    return pad(d.getUTCDate()) + '.' + pad(d.getUTCMonth()+1) + ' ' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ' UTC';
+  }
+  const p = tzParts(d);
+  return p.day + '.' + p.month + ' ' + p.hour + ':' + p.minute + ' ' + displayTzLabel;
+}
+function fmtDateTime(v) {
+  const d = parseDate(v);
+  if (!d) return v || '—';
+  if (displayTz === 'UTC') {
+    return pad(d.getUTCDate()) + '.' + pad(d.getUTCMonth()+1) + '.' + d.getUTCFullYear() + ' ' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ' UTC';
+  }
+  const p = tzParts(d);
+  return p.day + '.' + p.month + '.' + p.year + ' ' + p.hour + ':' + p.minute + ' ' + displayTzLabel;
+}
+function fmtRelative(v) {
+  const d = parseDate(v);
+  if (!d) return '';
+  const ms = d.getTime() - Date.now();
+  const abs = Math.abs(ms);
+  const min = Math.round(abs / 60000);
+  if (min < 60) return ms >= 0 ? ('через ' + min + ' мин') : (min + ' мин назад');
+  const h = Math.round(min / 60);
+  if (h < 48) return ms >= 0 ? ('через ' + h + ' ч') : (h + ' ч назад');
+  const days = Math.round(h / 24);
+  return ms >= 0 ? ('через ' + days + ' дн') : (days + ' дн назад');
+}
+function money(v, digits) {
+  if (v == null || v === '') return '—';
+  const n = Number(v);
+  if (Number.isNaN(n)) return String(v);
+  const d = digits == null ? 2 : digits;
+  return n.toLocaleString('ru-RU', { minimumFractionDigits: d, maximumFractionDigits: d });
+}
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function classify(item) {
+  if (item.provider === 'zai' || item.kind === 'coding-quota') {
+    if (!item.ok) return 'critical';
+    const sess = item.session || {};
+    const week = item.weekly || {};
+    const sessRem = sess.remaining_percent;
+    const weekRem = week.remaining_percent;
+    let worst = 'ok';
+    if (sessRem != null && sessRem <= 0) worst = 'critical';
+    else if (weekRem != null && weekRem <= 0) worst = 'critical';
+    else if (sessRem != null && sessRem <= 40) worst = 'warn';
+    else if (weekRem != null && weekRem <= 40) worst = 'warn';
+    return worst;
+  }
+  if (item.provider === 'deepseek' || item.kind === 'wallet-balance') {
+    if (!item.ok || !item.is_available) return 'critical';
+    const cny = (item.balance || []).find(function(b){ return b.currency === 'CNY'; });
+    if (cny && cny.total_balance != null) {
+      const bal = Number(cny.total_balance);
+      if (bal < 5) return 'critical';
+      if (bal < 20) return 'warn';
+    }
+    return 'ok';
+  }
+  if (item.provider === 'openrouter' || item.kind === 'wallet-credits') {
+    if (!item.ok) return 'critical';
+    const rem = item.remaining;
+    if (rem != null) {
+      if (rem < 0.5) return 'critical';
+      if (rem < 2) return 'warn';
+      return 'ok';
+    }
+    const keyLim = (item.key || {}).limit_remaining;
+    if (keyLim != null) {
+      if (Number(keyLim) < 0.5) return 'critical';
+      if (Number(keyLim) < 2) return 'warn';
+    }
+    return 'ok';
+  }
+  if (item.provider === 'commandcode' || item.kind === 'commandcode-credits') {
+    if (item.status === 'manual') return 'warn';
+    if (!item.ok) return 'critical';
+    const vals = [item.session, item.weekly, item.monthly].map(function(w){ return w && w.remaining_percent; }).filter(function(v){ return v != null; });
+    let worst = 'ok';
+    vals.forEach(function(rem) {
+      if (rem <= 0) worst = 'critical';
+      else if (rem <= 40 && worst !== 'critical') worst = 'warn';
+    });
+    return worst;
+  }
+  if (item.provider === 'kimi' || item.kind === 'kimi-coding-quota') {
+    if (item.status === 'manual') return 'warn';
+    if (!item.ok) return 'critical';
+    const vals = [item.session, item.weekly].map(function(w){ return w && w.remaining_percent; }).filter(function(v){ return v != null; });
+    let worst = 'ok';
+    vals.forEach(function(rem) {
+      if (rem <= 0) worst = 'critical';
+      else if (rem <= 40 && worst !== 'critical') worst = 'warn';
+    });
+    return worst;
+  }
+  if (item.provider === 'opencode-go' || item.kind === 'opencode-go-quota') {
+    if (item.status === 'manual') return 'warn';
+    if (!item.ok) return 'critical';
+    const vals = [item.session, item.weekly, item.monthly].map(function(w){ return w && w.remaining_percent; }).filter(function(v){ return v != null; });
+    let worst = 'ok';
+    vals.forEach(function(rem) {
+      if (rem <= 0) worst = 'critical';
+      else if (rem <= 40 && worst !== 'critical') worst = 'warn';
+    });
+    return worst;
+  }
+  return 'ok';
+}
+
+const NO_MODEL_BREAKDOWN = 'нет разбивки от провайдера';
+
+function compactSpend(spend) {
+  if (!spend || spend.spent == null) return null;
+  const s = spend.spent;
+  if (typeof s === 'object') {
+    if (s.CNY != null) return '¥' + money(Math.abs(Number(s.CNY)));
+    if (s.USD != null) return '$' + money(Math.abs(Number(s.USD)));
+  }
+  const n = Number(s);
+  if (Number.isNaN(n)) return String(s);
+  const unit = spend.unit || '';
+  if (unit === '$') return '$' + money(n);
+  if (unit === '¥') return '¥' + money(n);
+  if (unit === '%') return money(n, 1) + '%';
+  if (unit === 'tok') return fmt(Math.round(n)) + ' ток.';
+  if (unit === 'req') return fmt(Math.round(n)) + ' req';
+  return money(n);
+}
+
+function spendChip(label, spend) {
+  if (!spend || spend.spent == null || spend.gap === 'no-history') {
+    return '<span class="chip chip-empty">' + label + ' нет истории</span>';
+  }
+  if (spend.gap === 'window-reset') {
+    return '<span class="chip chip-empty">' + label + ' сброс окна</span>';
+  }
+  const amt = compactSpend(spend);
+  if (amt == null) return '<span class="chip chip-empty">' + label + ' нет истории</span>';
+  const tilde = spend.partial ? '~ ' : '';
+  const cls = spend.partial ? ' chip-partial' : '';
+  return '<span class="chip' + cls + '">' + tilde + label + ' −' + escapeHtml(amt) + '</span>';
+}
+
+function sparklineSvg(series) {
+  const pts = (series && series.points) || [];
+  const vals = pts.map(function(p) { return p.spent; });
+  const nums = vals.filter(function(v) { return v != null && !Number.isNaN(Number(v)); }).map(Number);
+  if (nums.length < 2) return '';
+  const w = 88, h = 28;
+  const min = Math.min.apply(null, nums);
+  const max = Math.max.apply(null, nums);
+  const span = (max - min) || 1;
+  const n = vals.length;
+  const coords = [];
+  for (let i = 0; i < n; i++) {
+    if (vals[i] == null) continue;
+    const x = n === 1 ? w / 2 : (i / (n - 1)) * (w - 2) + 1;
+    const y = h - 2 - ((Number(vals[i]) - min) / span) * (h - 4);
+    coords.push(x.toFixed(1) + ',' + y.toFixed(1));
+  }
+  if (coords.length < 2) return '';
+  return '<svg class="spark" viewBox="0 0 ' + w + ' ' + h + '" width="' + w + '" height="' + h + '" aria-hidden="true"><polyline fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" points="' + coords.join(' ') + '"/></svg>';
+}
+
+function usedPctOf(lim) {
+  if (!lim) return null;
+  if (lim.used_percent != null) return Number(lim.used_percent);
+  if (lim.remaining_percent != null) return 100 - Number(lim.remaining_percent);
+  if (lim.used != null && lim.cap) return (Number(lim.used) / Number(lim.cap)) * 100;
+  if (lim.used_usd != null && lim.cap) return (Number(lim.used_usd) / Number(lim.cap)) * 100;
+  return null;
+}
+
+function allotmentBar(label, lim, windowName) {
+  if (!lim) return '';
+  const remPct = lim.remaining_percent != null ? Number(lim.remaining_percent) : null;
+  const usedPct = usedPctOf(lim);
+  const hasMoney = lim.remaining_usd != null || lim.cap != null || lim.used != null || lim.used_usd != null || lim.remaining != null;
+  if (usedPct == null && remPct == null && !hasMoney) return '';
+  const used = usedPct == null ? 0 : Math.max(0, Math.min(100, usedPct));
+  let cls = 'ok';
+  if ((remPct != null && remPct <= 0) || used >= 90) cls = 'bad';
+  else if (used > 50) cls = 'warn';
+  const remText = remPct != null ? (Math.round(remPct) + '% осталось') : 'остаток';
+  let qty = '';
+  if (lim.remaining_usd != null && lim.cap != null) {
+    qty = ' · $' + money(lim.remaining_usd) + ' / $' + money(lim.cap);
+  } else if (lim.used_usd != null && lim.cap != null) {
+    qty = ' · $' + money(lim.used_usd) + ' / $' + money(lim.cap);
+  } else if (lim.used != null && lim.cap != null) {
+    qty = ' · ' + fmt(lim.used) + ' / ' + fmt(lim.cap);
+  } else if (lim.remaining != null && lim.cap != null) {
+    qty = ' · ' + fmt(lim.remaining) + ' / ' + fmt(lim.cap);
+  }
+  const resetRel = lim.next_reset_at ? fmtRelative(lim.next_reset_at) : '';
+  const resetLine = lim.next_reset_at
+    ? ('сброс ' + fmtDateShort(lim.next_reset_at) + (resetRel ? ' · ' + resetRel : ''))
+    : '';
+  return '<div class="allot">' +
+    '<div class="allot-head"><span class="allot-label">' + escapeHtml(label) + '</span>' +
+      '<span class="allot-pct ' + (cls === 'bad' ? 'bad-text' : cls === 'warn' ? 'warn-text' : '') + '">' +
+        (usedPct != null ? (Math.round(used) + '%') : '—') + '</span></div>' +
+    '<div class="bar ' + cls + '"><span style="width:' + used + '%"></span></div>' +
+    '<div class="bar-sub">' + escapeHtml(remText + ' (' + windowName + ')' + qty) + '</div>' +
+    (resetLine ? '<div class="bar-sub">' + escapeHtml(resetLine) + '</div>' : '') +
+  '</div>';
+}
+
+function heroFor(w) {
+  const p = w.provider;
+  if (p === 'openrouter') {
+    if (openrouterIsKeyOnly(w)) {
+      const key = w.key || {};
+      if (key.limit_remaining != null) {
+        return {
+          value: '$' + money(key.limit_remaining),
+          caption: key.limit != null ? ('из $' + money(key.limit) + ' лимита ключа') : 'лимит ключа',
+          plan: key.label || 'key',
+        };
+      }
+      const daily = w.usage_daily != null ? w.usage_daily : key.usage_daily;
+      return {
+        value: daily != null ? ('−$' + money(daily)) : '—',
+        caption: 'сутки (сброс 03:00 МСК)',
+        plan: key.label || 'key',
+      };
+    }
+    return {
+      value: w.remaining != null ? ('$' + money(w.remaining)) : '—',
+      caption: w.total_credits != null ? ('из $' + money(w.total_credits) + ' кредитов') : 'кредиты OpenRouter',
+      plan: 'credits',
+    };
+  }
+  if (p === 'deepseek') {
+    const bals = w.balance || [];
+    const cny = bals.find(function(b){ return b.currency === 'CNY'; }) || {};
+    const usd = bals.find(function(b){ return b.currency === 'USD'; }) || {};
+    let value = '—';
+    let caption = 'баланс';
+    if (cny.total_balance != null) {
+      value = '¥' + Number(cny.total_balance).toFixed(2);
+      caption = cny.topped_up_balance != null ? ('из ¥' + Number(cny.topped_up_balance).toFixed(2) + ' пополнения') : 'баланс CNY';
+    } else if (usd.total_balance != null) {
+      value = '$' + Number(usd.total_balance).toFixed(2);
+      caption = 'баланс USD';
+    }
+    return { value: value, caption: caption, plan: 'credits' };
+  }
+  if (p === 'zai') {
+    const week = w.weekly || {};
+    const rem = week.remaining_percent;
+    return {
+      value: rem != null ? (Math.round(Number(rem)) + '%') : '—',
+      caption: 'из недельной квоты',
+      plan: w.level || 'pro',
+    };
+  }
+  if (p === 'commandcode') {
+    const month = w.monthly || {};
+    const rem = month.remaining_usd != null ? month.remaining_usd : w.monthly_credits;
+    const cap = month.cap != null ? month.cap : w.monthly_allowance;
+    return {
+      value: rem != null ? ('$' + money(rem)) : '—',
+      caption: cap != null ? ('из $' + money(cap) + ' кредитов') : 'кредиты плана',
+      plan: w.plan_label || 'GOAT',
+    };
+  }
+  if (p === 'kimi') {
+    const week = w.weekly || {};
+    const rem = week.remaining_percent;
+    return {
+      value: rem != null ? (Math.round(Number(rem)) + '%') : '—',
+      caption: 'из недельной квоты',
+      plan: w.plan_label || 'Kimi',
+    };
+  }
+  if (p === 'opencode-go') {
+    const month = w.monthly || {};
+    const rem = month.remaining_usd;
+    const cap = month.cap;
+    return {
+      value: rem != null ? ('$' + money(rem)) : (month.remaining_percent != null ? (Math.round(month.remaining_percent) + '%') : '—'),
+      caption: cap != null ? ('из $' + money(cap) + ' / мес') : 'месячный лимит',
+      plan: w.plan_label || 'Go',
+    };
+  }
+  return { value: '—', caption: '', plan: '' };
+}
+
+function planBadge(w, plan, st) {
+  if (w.status === 'manual') return '<span class="badge warn">manual</span>';
+  if (!w.ok) return '<span class="badge bad">error</span>';
+  const tone = st === 'critical' ? 'bad' : st === 'warn' ? 'warn' : 'ok';
+  return '<span class="badge plan">' + escapeHtml(plan || 'plan') + '</span>' +
+    '<span class="badge ' + tone + '">' + (st === 'critical' ? 'crit' : st === 'warn' ? 'warn' : 'ok') + '</span>';
+}
+
+function openrouterIsKeyOnly(w) {
+  return !!(w && w.ok && w.total_credits == null && w.remaining == null);
+}
+
+function openrouterKeyLiveChips(w) {
+  if (!openrouterIsKeyOnly(w)) return '';
+  const key = w.key || {};
+  const daily = w.usage_daily != null ? w.usage_daily : key.usage_daily;
+  const weekly = w.usage_weekly != null ? w.usage_weekly : key.usage_weekly;
+  const monthly = w.usage_monthly != null ? w.usage_monthly : key.usage_monthly;
+  let html = '';
+  if (daily != null) html += '<span class="chip">сутки UTC −$' + money(daily) + '</span>';
+  if (weekly != null) html += '<span class="chip">нед UTC −$' + money(weekly) + '</span>';
+  if (monthly != null) html += '<span class="chip">мес UTC −$' + money(monthly) + '</span>';
+  const total = w.total_usage != null ? w.total_usage : key.usage;
+  if (total != null) html += '<span class="chip">всего $' + money(total) + '</span>';
+  return html;
+}
+
+function openrouterKeyLimitBar(w) {
+  if (!openrouterIsKeyOnly(w)) return '';
+  const key = w.key || {};
+  const cap = key.limit;
+  const rem = key.limit_remaining;
+  if (cap == null || rem == null || !(Number(cap) > 0)) return '';
+  const used = Number(cap) - Number(rem);
+  const usedPct = Math.max(0, Math.min(100, (used / Number(cap)) * 100));
+  const remPct = (Number(rem) / Number(cap)) * 100;
+  return allotmentBar('лимит ключа', {
+    used_percent: usedPct,
+    remaining_percent: remPct,
+    remaining_usd: rem,
+    cap: cap,
+  }, 'ключ');
+}
+
+function openrouterCreditsBar(w) {
+  const total = w.total_credits;
+  const used = w.total_usage;
+  const rem = w.remaining;
+  if (total == null || used == null || !(total > 0)) return '';
+  const usedPct = Math.max(0, Math.min(100, (used / total) * 100));
+  const remPct = rem != null && total ? (rem / total) * 100 : (100 - usedPct);
+  const lim = { used_percent: usedPct, remaining_percent: remPct, remaining_usd: rem, cap: total };
+  return allotmentBar('кредиты', lim, 'план');
+}
+
+function renderSpendDetails(w) {
+  const s24 = w.spend_24h || {};
+  const s7 = w.spend_7d || {};
+  function line(label, s) {
+    const amt = compactSpend(s);
+    const body = amt == null
+      ? (s.gap === 'window-reset' ? 'сброс окна' : 'нет истории')
+      : ('−' + amt);
+    const extra = s.partial && amt != null ? ' <span class="warn-text">~ частичная история</span>' : '';
+    return '<div class="details-row"><span>' + label + '</span><span><b>' + escapeHtml(body) + '</b>' + extra + '</span></div>';
+  }
+  return '<div class="details-section">Расход (snapshots)</div>' + line('24ч', s24) + line('7д', s7);
+}
+
+function toggleDetails(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const expanded = el.getAttribute('data-expanded') === 'true';
+  el.setAttribute('data-expanded', expanded ? 'false' : 'true');
+}
+
+function detailsZai(w) {
+  const mcp = w.mcp || {};
+  const mcpCur = mcp.currentValue != null ? mcp.currentValue : '—';
+  const mcpLim = mcp.usage != null ? mcp.usage : '—';
+  const mcpRem = mcp.remaining != null ? mcp.remaining : '—';
+  const mcpReset = mcp.next_reset_at ? (fmtDateShort(mcp.next_reset_at) + ' · ' + fmtRelative(mcp.next_reset_at)) : '—';
+  const sessLim = (w.limits || []).find(function(l){ return l.kind === 'session'; }) || {};
+  const weekLim = (w.limits || []).find(function(l){ return l.kind === 'weekly'; }) || {};
+  const mcpLimRaw = (w.limits || []).find(function(l){ return l.kind === 'mcp'; }) || {};
+  function exactVal(lim) {
+    const num = lim.number != null ? fmt(lim.number) : '—';
+    const usage = lim.currentValue != null ? fmt(lim.currentValue) : '—';
+    return usage + ' / ' + num + ' ' + escapeHtml(lim.unit || '');
+  }
+  return '<div class="details-section">MCP инструменты</div>' +
+    '<div class="details-row"><span>использовано</span><span><b>' + escapeHtml(String(mcpCur)) + '</b> / ' + escapeHtml(String(mcpLim)) + '</span></div>' +
+    '<div class="details-row"><span>осталось</span><span>' + escapeHtml(String(mcpRem)) + '</span></div>' +
+    '<div class="details-row"><span>сброс</span><span class="muted">' + mcpReset + '</span></div>' +
+    '<div class="details-section">Точные значения</div>' +
+    '<div class="details-mono">short: ' + exactVal(sessLim) + '<br>week: ' + exactVal(weekLim) + '<br>mcp: ' + exactVal(mcpLimRaw) + '</div>' +
+    renderSpendDetails(w) +
+    '<div class="details-src">источник: /api/monitor/usage/quota/limit</div>' +
+    (w.error ? '<div class="details-src bad-text">' + escapeHtml(w.error) + '</div>' : '');
+}
+
+function detailsDeepseek(w) {
+  const bals = w.balance || [];
+  let balDetails = '';
+  bals.forEach(function(b) {
+    const sym = b.currency === 'CNY' ? '¥' : '$';
+    balDetails += '<div class="details-row"><span>' + escapeHtml(b.currency || '') + ' баланс</span><span><b>' + sym + Number(b.total_balance || 0).toFixed(2) + '</b></span></div>';
+  });
+  const avail = w.is_available ? '<span class="ok-text">available</span>' : '<span class="bad-text">unavailable</span>';
+  return '<div class="details-section">Балансы</div>' + (balDetails || '<div class="details-row muted">нет данных</div>') +
+    renderSpendDetails(w) +
+    '<div class="details-section">Статус</div>' +
+    '<div class="details-row"><span>доступен</span><span>' + avail + '</span></div>' +
+    '<div class="details-src">источник: api.deepseek.com/user/balance + snapshots.jsonl</div>' +
+    (w.error ? '<div class="details-src bad-text">' + escapeHtml(w.error) + '</div>' : '');
+}
+
+function detailsOpenrouter(w) {
+  if (openrouterIsKeyOnly(w)) {
+    const key = w.key || {};
+    const daily = w.usage_daily != null ? w.usage_daily : key.usage_daily;
+    const weekly = w.usage_weekly != null ? w.usage_weekly : key.usage_weekly;
+    const monthly = w.usage_monthly != null ? w.usage_monthly : key.usage_monthly;
+    let html = '<div class="details-section">Ключ</div>';
+    if (key.label) {
+      html += '<div class="details-row"><span>label</span><span>' + escapeHtml(String(key.label)) + '</span></div>';
+    }
+    html += '<div class="details-row"><span>сутки UTC</span><span>$' + money(daily) + '</span></div>' +
+      '<div class="details-row"><span>неделя UTC (пн–вс)</span><span>$' + money(weekly) + '</span></div>' +
+      '<div class="details-row"><span>месяц UTC</span><span>$' + money(monthly) + '</span></div>';
+    if (key.usage != null) {
+      html += '<div class="details-row"><span>Итого</span><span>$' + money(key.usage) + '</span></div>';
+    }
+    if (key.limit != null || key.limit_remaining != null) {
+      html += '<div class="details-row"><span>лимит</span><span>$' + money(key.limit_remaining) + ' / $' + money(key.limit) + '</span></div>';
+    }
+    html += renderSpendDetails(w);
+    if (w.remaining_summary) html += '<div class="details-mono">' + escapeHtml(w.remaining_summary) + '</div>';
+    html += '<div class="details-src">источник: GET /api/v1/key (key-only)</div>';
+    if (w.error) html += '<div class="details-src bad-text">' + escapeHtml(w.error) + '</div>';
+    return html;
+  }
+  const keys = w.keys || [];
+  let keysHtml = '';
+  if (keys.length) {
+    keysHtml = '<div class="details-section">Ключи</div>' + keys.slice(0, 8).map(function(k) {
+      return '<div class="details-row"><span>' + escapeHtml(k.name || k.label || '?') + '</span><span>$' + money(k.usage_daily || 0) + ' today</span></div>';
+    }).join('');
+  }
+  return '<div class="details-section">Кредиты</div>' +
+    '<div class="details-row"><span>остаток</span><span><b>$' + money(w.remaining) + '</b></span></div>' +
+    '<div class="details-row"><span>использовано</span><span class="muted">$' + money(w.total_usage) + ' / $' + money(w.total_credits) + '</span></div>' +
+    renderSpendDetails(w) +
+    '<div class="details-row"><span>сегодня (all keys)</span><span>$' + money(w.usage_daily_all_keys != null ? w.usage_daily_all_keys : w.usage_daily) + '</span></div>' +
+    keysHtml +
+    '<div class="details-src">источник: /api/v1/credits + /api/v1/key + /api/v1/activity</div>' +
+    (w.error ? '<div class="details-src bad-text">' + escapeHtml(w.error) + '</div>' : '');
+}
+
+function detailsSimple(w, extraRows, source) {
+  let html = extraRows || '';
+  if (w.remaining_summary) html += '<div class="details-mono">' + escapeHtml(w.remaining_summary) + '</div>';
+  html += renderSpendDetails(w);
+  html += '<div class="details-src">источник: ' + escapeHtml(source) + '</div>';
+  if (w.error) {
+    html += '<div class="details-src ' + (w.status === 'manual' ? 'warn-text' : 'bad-text') + '">' + escapeHtml(w.error) + '</div>';
+  }
+  return html;
+}
+
+function renderProviderCard(w, spec) {
+  if (!w) return '';
+  const st = classify(w);
+  const hero = heroFor(w);
+  let chips = '';
+  if (!hidePartialSpendChips) {
+    chips += spendChip('24ч', w.spend_24h) + spendChip('7д', w.spend_7d);
+  }
+  if (spec.prov === 'openrouter') chips += openrouterKeyLiveChips(w);
+  const spark = sparklineSvg(w.spend_series_7d);
+  let bars = '';
+  (spec.windows || []).forEach(function(win) {
+    bars += allotmentBar(win.label, w[win.key] || {}, win.window);
+  });
+  if (spec.creditsBar) {
+    bars += openrouterCreditsBar(w);
+    bars += openrouterKeyLimitBar(w);
+  }
+  const errLine = (!w.ok && w.error)
+    ? '<div class="bar-sub ' + (w.status === 'manual' ? 'warn-text' : 'bad-text') + '">' + escapeHtml(w.error) + '</div>'
+    : '';
+  return '<div class="pcard ' + st + ' prov-' + spec.prov + '" id="' + spec.id + '" data-expanded="false">' +
+    '<div class="pcard-head"><span class="pcard-title">' + escapeHtml(spec.title) + '</span>' +
+      '<span class="head-badges">' + planBadge(w, hero.plan, st) + '</span></div>' +
+    '<div class="hero"><div class="hero-val">' + escapeHtml(hero.value) + '</div>' +
+      '<div class="hero-cap">' + escapeHtml(hero.caption) + '</div></div>' +
+    '<div class="delta-row">' + chips + spark + '</div>' +
+    bars + errLine +
+    '<div class="details-body">' + spec.details(w) + '</div>' +
+    '<div class="details-toggle" onclick="toggleDetails(\'' + spec.id + '\')"></div>' +
+  '</div>';
+}
+
+function renderZaiCard(w) {
+  return renderProviderCard(w, {
+    id: 'zai-card', prov: 'zai', title: 'Z.AI · GLM Coding',
+    windows: [
+      { key: 'session', label: 'короткий', window: '5ч' },
+      { key: 'weekly', label: 'неделя', window: 'неделя' },
+    ],
+    details: detailsZai,
+  });
+}
+function renderCommandcodeCard(w) {
+  return renderProviderCard(w, {
+    id: 'commandcode-card', prov: 'commandcode', title: 'Command Code · GOAT',
+    windows: [
+      { key: 'session', label: 'короткий', window: '5ч' },
+      { key: 'weekly', label: 'неделя', window: 'неделя' },
+      { key: 'monthly', label: 'месяц', window: 'месяц' },
+    ],
+    details: function(card) {
+      return detailsSimple(card,
+        '<div class="details-section">План</div>' +
+        '<div class="details-row"><span>label</span><span>' + escapeHtml(String(card.plan_label || 'GOAT')) + '</span></div>' +
+        '<div class="details-row"><span>planId</span><span class="muted">' + escapeHtml(String(card.plan_id || '—')) + '</span></div>',
+        '/alpha/billing/credits (+ optional /subscriptions)');
+    },
+  });
+}
+function renderKimiCard(w) {
+  return renderProviderCard(w, {
+    id: 'kimi-card', prov: 'kimi', title: 'Kimi · Coding',
+    windows: [
+      { key: 'session', label: 'короткий', window: '5ч' },
+      { key: 'weekly', label: 'неделя', window: 'неделя' },
+    ],
+    details: function(card) {
+      return detailsSimple(card, '<div class="details-section">План</div><div class="details-row"><span>label</span><span>' + escapeHtml(String(card.plan_label || 'Kimi')) + '</span></div>', 'GET /coding/v1/usages');
+    },
+  });
+}
+function renderOpencodeGoCard(w) {
+  return renderProviderCard(w, {
+    id: 'opencode-go-card', prov: 'opencode-go', title: 'OpenCode · Go',
+    windows: [
+      { key: 'session', label: 'короткий', window: '5ч' },
+      { key: 'weekly', label: 'неделя', window: 'неделя' },
+      { key: 'monthly', label: 'месяц', window: 'месяц' },
+    ],
+    details: function(card) {
+      return detailsSimple(card,
+        '<div class="details-section">План</div><div class="details-row"><span>label</span><span>' + escapeHtml(String(card.plan_label || 'Go')) + '</span></div>' +
+        '<div class="details-row"><span>опубликовано</span><span class="muted">$12 / 5ч · $30 / нед · $60 / мес</span></div>',
+        'GET /zen/go/v1/usage (percent = used)');
+    },
+  });
+}
+function renderDeepseekCard(w) {
+  return renderProviderCard(w, {
+    id: 'deepseek-card', prov: 'deepseek', title: 'DeepSeek · баланс',
+    windows: [],
+    details: detailsDeepseek,
+  });
+}
+function renderOpenrouterCard(w) {
+  const title = openrouterIsKeyOnly(w) ? 'OpenRouter · key' : 'OpenRouter · credits';
+  return renderProviderCard(w, {
+    id: 'openrouter-card', prov: 'openrouter', title: title,
+    windows: [],
+    creditsBar: true,
+    details: detailsOpenrouter,
+  });
+}
+
+function tokenSum(row) {
+  return Number(row.prompt_tokens || 0) + Number(row.completion_tokens || 0) + Number(row.reasoning_tokens || 0);
+}
+
+function renderModelsSection(orWallet) {
+  const m = (orWallet && orWallet.models) || {};
+  if (!m.available) {
+    return '<div class="table-wrap"><div class="models-note">' + escapeHtml(m.reason || NO_MODEL_BREAKDOWN) + '</div></div>';
+  }
+  const isExport = m.source === 'openrouter-key-export';
+  const items = m.items || [];
+  if (!items.length) {
+    return '<div class="table-wrap"><div class="models-note">нет данных за период</div></div>';
+  }
+  if (isExport) {
+    let html = '<div class="table-wrap"><table class="models"><thead><tr>' +
+      '<th>модель</th><th class="num">вчера</th><th class="num">7 дней</th><th class="num">30 дней</th>' +
+      '</tr></thead><tbody>';
+    items.forEach(function(it) {
+      html += '<tr><td class="model">' + escapeHtml(it.model || '?') + '</td>' +
+        '<td class="num">$' + money(it.usage_24h) + '</td>' +
+        '<td class="num">$' + money(it.usage_7d != null ? it.usage_7d : it.usage) + '</td>' +
+        '<td class="num">$' + money(it.usage_30d) + '</td></tr>';
+    });
+    html += '</tbody></table></div>';
+    html += '<div class="bar-sub" style="margin-top:8px">' + escapeHtml(m.note || 'UTC-дни activity') + '</div>';
+    return html;
+  }
+  let html = '<div class="table-wrap"><table class="models"><thead><tr>' +
+    '<th>модель</th><th class="num">spend</th><th class="num">req</th><th class="num">tokens</th>' +
+    '</tr></thead><tbody>';
+  items.forEach(function(it) {
+    html += '<tr><td class="model">' + escapeHtml(it.model || '?') + '</td>' +
+      '<td class="num">$' + money(it.usage) + '</td>' +
+      '<td class="num">' + fmt(it.requests) + '</td>' +
+      '<td class="num">' + fmt(tokenSum(it)) + '</td></tr>';
+  });
+  html += '</tbody></table></div>';
+  if (m.partial) html += '<div class="bar-sub" style="margin-top:8px">UTC-дни · GET /api/v1/activity · частичные сутки</div>';
+  return html;
+}
+
+const WALLET_LABELS = {
+  zai: 'Z.AI',
+  commandcode: 'Command Code',
+  kimi: 'Kimi',
+  'opencode-go': 'OpenCode Go',
+  deepseek: 'DeepSeek',
+  openrouter: 'OpenRouter',
+};
+const STAT_LABEL_ORDER = ['deepseek', 'openrouter', 'zai', 'commandcode', 'kimi', 'opencode-go'];
+const CARD_ORDER = ['zai', 'commandcode', 'kimi', 'opencode-go', 'deepseek', 'openrouter'];
+
+function applySiteTitle(title) {
+  const t = (title && String(title).trim()) ? String(title).trim() : 'Мои подписки';
+  document.title = t + ' · usage-board';
+  const h1 = document.querySelector('h1');
+  if (h1) h1.textContent = t;
+}
+
+function orderedWalletKeys(wallets) {
+  const keys = [];
+  STAT_LABEL_ORDER.forEach(function(k) {
+    if (wallets[k]) keys.push(k);
+  });
+  Object.keys(wallets).forEach(function(k) {
+    if (STAT_LABEL_ORDER.indexOf(k) < 0 && wallets[k]) keys.push(k);
+  });
+  return keys;
+}
+
+function sourceLabels(wallets) {
+  return orderedWalletKeys(wallets).map(function(k) {
+    return WALLET_LABELS[k] || k;
+  }).join(' · ');
+}
+
+function orderedWalletItems(wallets) {
+  return orderedWalletKeys(wallets).map(function(k) { return wallets[k]; });
+}
+
+function walletBalanceCards(wallets) {
+  let out = '';
+  const ds = wallets.deepseek;
+  if (ds) {
+    let bal = '—';
+    const arr = ds.balance;
+    if (Array.isArray(arr)) {
+      const parts = [];
+      arr.forEach(function(b) {
+        const v = parseFloat(b.total_balance);
+        if (v > 0) parts.push((b.currency === 'CNY' ? '¥' : b.currency === 'USD' ? '$' : escapeHtml(String(b.currency)) + ' ') + money(v));
+      });
+      if (parts.length) bal = parts.join(' + ');
+    }
+    out += '<div class="stat-card"><div class="stat-k">DeepSeek · баланс</div><div class="stat-v">' + bal + '</div><div class="stat-sub">кошелёк</div></div>';
+  }
+  const orw = wallets.openrouter;
+  if (orw && orw.remaining != null) {
+    out += '<div class="stat-card"><div class="stat-k">OpenRouter · баланс</div><div class="stat-v">$' + money(orw.remaining) + '</div><div class="stat-sub">кошелёк</div></div>';
+  }
+  return out;
+}
+
+function renderStats(data) {
+  const wallets = data.wallets || {};
+  const allItems = orderedWalletItems(wallets);
+
+  let active = 0, attention = 0;
+  allItems.forEach(function(item) {
+    const st = classify(item);
+    if (st === 'ok') active++;
+    else if (st === 'warn' || st === 'critical') attention++;
+  });
+
+  let spendParts = [];
+  let spendSub;
+  if (wallets.deepseek || wallets.openrouter) {
+    const dsSpend = (wallets.deepseek || {}).spend_24h || {};
+    if (dsSpend.spent != null) {
+      const dsVal = typeof dsSpend.spent === 'object' ? (dsSpend.spent.CNY != null ? Number(dsSpend.spent.CNY) : null) : Number(dsSpend.spent);
+      if (dsVal != null) spendParts.push('¥' + money(Math.abs(dsVal)));
+    }
+    const orSpend = (wallets.openrouter || {}).spend_24h || {};
+    if (orSpend.spent != null) spendParts.push('$' + money(orSpend.spent));
+    const spendNames = [];
+    if (wallets.deepseek) spendNames.push('DeepSeek');
+    if (wallets.openrouter) spendNames.push('OpenRouter');
+    if (hidePartialSpendChips) {
+      const hours = orSpend.window_hours || 24;
+      const end = parseDate(data.updated_at) || new Date();
+      const start = new Date(end.getTime() - hours * 3600 * 1000);
+      spendSub = 'rolling ' + hours + 'ч · ' + fmtDateShort(start.toISOString()) + ' – ' + fmtDateShort(end.toISOString());
+      if (orSpend.partial && orSpend.spent != null) spendSub += ' · частичное';
+    } else {
+      spendSub = spendNames.join(' + ') + ' · 7д на карточках';
+    }
+  } else {
+    allItems.forEach(function(item) {
+      const s = item.spend_24h || {};
+      const t = compactSpend(s);
+      if (s.spent != null && t) spendParts.push(t);
+    });
+    spendSub = (sourceLabels(wallets) || 'провайдер') + ' · 7д на карточках';
+  }
+  const spendStr = spendParts.length ? spendParts.join(' + ') : '—';
+  const statClass = attention > 0 ? 'critical' : '';
+
+  // Верхний ряд: Расход 24ч · балансы DeepSeek/OpenRouter · Внимание (активность — в подписи).
+  const attSub = (attention > 0 ? (attention + ' лимит') : 'всё нормально') + ' · ' + active + '/' + allItems.length + ' активны';
+  document.getElementById('stats').innerHTML =
+    '<div class="stat-card"><div class="stat-k">Расход 24ч</div><div class="stat-v">' + spendStr + '</div><div class="stat-sub">' + escapeHtml(spendSub) + '</div></div>' +
+    walletBalanceCards(wallets) +
+    '<div class="stat-card ' + statClass + '"><div class="stat-k">Требует внимания</div><div class="stat-v ' + (attention > 0 ? 'bad-text' : '') + '">' + attention + '</div><div class="stat-sub">' + escapeHtml(attSub) + '</div></div>';
+}
+
+/* ── Quota pace (server computes the rule; JS only renders) ── */
+const PACE_STALE_SECONDS = 600;
+const PACE_TOOLTIP = 'локальная оценка обгона линейного темпа, не официальный таймер провайдера';
+const PACE_COLORS = {
+  zai: '#38bdf8',
+  'zai-main': '#38bdf8',
+  commandcode: '#fb923c',
+  'commandcode-main': '#fb923c',
+  kimi: '#f472b6',
+  'kimi-main': '#f472b6',
+  'opencode-go': '#c084fc',
+  'opencode-go-main': '#c084fc'
+};
+const PACE_LABELS = {
+  'zai-main': 'z.ai',
+  zai: 'z.ai',
+  'commandcode-main': 'commandcode',
+  commandcode: 'commandcode',
+  'kimi-main': 'kimi',
+  kimi: 'kimi',
+  'opencode-go-main': 'opencode-go',
+  'opencode-go': 'opencode-go',
+  'deepseek-main': 'deepseek',
+  deepseek: 'deepseek',
+  'openrouter-main': 'openrouter',
+  openrouter: 'openrouter'
+};
+
+function paceProviderLabel(id) {
+  if (PACE_LABELS[id]) return PACE_LABELS[id];
+  return String(id || '').replace(/-main$/, '') || id;
+}
+function paceProviderColor(id) {
+  return PACE_COLORS[id] || '#8b9bb0';
+}
+function fmtResetMsk(v) {
+  const d = parseDate(v);
+  if (!d) return '—';
+  const fmt = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Moscow',
+    day: '2-digit', month: '2-digit',
+    hour: '2-digit', minute: '2-digit',
+    hour12: false
+  });
+  const map = {};
+  fmt.formatToParts(d).forEach(function(p) { map[p.type] = p.value; });
+  return map.day + '.' + map.month + ' ' + map.hour + ':' + map.minute + ' МСК';
+}
+function formatPacePill(lane) {
+  if (!lane || lane.pace === 'ok') {
+    return { text: 'темп ok', cls: 'ok' };
+  }
+  const minutes = Number(lane.cooldown_minutes) || 0;
+  const hours = minutes / 60;
+  const rounded = Math.round(hours * 10) / 10;
+  const label = (Math.abs(rounded - Math.round(rounded)) < 1e-9)
+    ? String(Math.round(rounded))
+    : String(rounded);
+  const cls = lane.pace === 'warn' ? 'warn' : 'danger';
+  return { text: 'темп +' + label + 'ч', cls: cls };
+}
+function lanesForWindow(accounts, windowKey) {
+  const out = [];
+  (accounts || []).forEach(function(acc) {
+    (acc.lanes || []).forEach(function(lane) {
+      if (lane && lane.window === windowKey) {
+        out.push({ provider: acc.provider, lane: lane });
+      }
+    });
+  });
+  return out;
+}
+function renderPaceSvg(rows) {
+  const left = 40, top = 12, right = 12, bottom = 28;
+  const vbW = 320, vbH = 300;
+  const plotW = vbW - left - right;
+  const plotH = vbH - top - bottom;
+  function xOf(pct) { return left + (Math.max(0, Math.min(100, Number(pct) || 0)) / 100) * plotW; }
+  function yOf(pct) { return top + plotH - (Math.max(0, Math.min(100, Number(pct) || 0)) / 100) * plotH; }
+  const x0 = xOf(0), y0 = yOf(0), x1 = xOf(100), y1 = yOf(100);
+  let dots = '';
+  rows.forEach(function(row) {
+    const color = paceProviderColor(row.provider);
+    const cx = xOf(row.lane.norm_percent);
+    const cy = yOf(row.lane.used_percent);
+    const name = escapeHtml(paceProviderLabel(row.provider));
+    dots += '<circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="6" fill="' + color +
+      '" stroke="#0b0f14" stroke-width="1.4"><title>' + name +
+      ' факт ' + escapeHtml(String(row.lane.used_percent)) +
+      '% · норма ' + escapeHtml(String(row.lane.norm_percent)) + '%</title></circle>';
+  });
+  return '<svg class="pace-svg" viewBox="0 0 ' + vbW + ' ' + vbH + '" role="img" aria-label="норма против факта">' +
+    '<rect x="' + left + '" y="' + top + '" width="' + plotW + '" height="' + plotH +
+      '" fill="rgba(10,14,23,0.35)" stroke="#243041" />' +
+    '<line x1="' + xOf(50) + '" y1="' + top + '" x2="' + xOf(50) + '" y2="' + (top + plotH) +
+      '" stroke="#243041" stroke-width="1" />' +
+    '<line x1="' + left + '" y1="' + yOf(50) + '" x2="' + (left + plotW) + '" y2="' + yOf(50) +
+      '" stroke="#243041" stroke-width="1" />' +
+    '<line x1="' + x0 + '" y1="' + y0 + '" x2="' + x1 + '" y2="' + y1 +
+      '" stroke="#8b9bb0" stroke-width="1.4" stroke-dasharray="5 4" />' +
+    dots +
+    '<text x="' + (left + plotW / 2) + '" y="' + (vbH - 6) +
+      '" text-anchor="middle" fill="#8b9bb0" font-size="10">норма %</text>' +
+    '<text x="12" y="' + (top + plotH / 2) +
+      '" text-anchor="middle" fill="#8b9bb0" font-size="10" transform="rotate(-90 12 ' +
+      (top + plotH / 2) + ')">факт %</text>' +
+    '<text x="' + left + '" y="' + (vbH - 6) + '" fill="#3d4f66" font-size="9">0</text>' +
+    '<text x="' + (left + plotW) + '" y="' + (vbH - 6) +
+      '" text-anchor="end" fill="#3d4f66" font-size="9">100</text>' +
+    '</svg>';
+}
+function renderPaceColumn(title, windowKey, accounts) {
+  const rows = lanesForWindow(accounts, windowKey);
+  const resets = [];
+  const seen = {};
+  rows.forEach(function(row) {
+    const key = row.lane.reset_at || '';
+    if (key && !seen[key]) { seen[key] = true; resets.push(key); }
+  });
+  let resetHtml = '';
+  if (resets.length === 1) {
+    resetHtml = '<div class="pace-reset">сброс: ' + escapeHtml(fmtResetMsk(resets[0])) + '</div>';
+  } else if (resets.length > 1) {
+    resetHtml = rows.map(function(row) {
+      return '<div class="pace-reset">' + escapeHtml(paceProviderLabel(row.provider)) +
+        ' сброс: ' + escapeHtml(fmtResetMsk(row.lane.reset_at)) + '</div>';
+    }).join('');
+  }
+  const legend = rows.map(function(row) {
+    const used = row.lane.used_percent;
+    const usedLabel = (used == null || Number.isNaN(Number(used))) ? '—' : (Math.round(Number(used)) + '%');
+    const pill = formatPacePill(row.lane);
+    const age = Number(row.lane.data_age_seconds);
+    const stale = Number.isFinite(age) && age > PACE_STALE_SECONDS
+      ? '<span class="pace-stale">данные устарели (' + Math.round(age / 60) + ' мин)</span>'
+      : '';
+    return '<div class="pace-row">' +
+      '<span class="pace-swatch" style="background:' + paceProviderColor(row.provider) + '"></span>' +
+      '<span>' + escapeHtml(paceProviderLabel(row.provider)) + '</span>' +
+      '<span class="pace-used">' + escapeHtml(usedLabel) + '</span>' +
+      '<span class="pace-pill ' + pill.cls + '" title="' + escapeHtml(PACE_TOOLTIP) + '">' +
+        escapeHtml(pill.text) + '</span>' +
+      stale +
+    '</div>';
+  }).join('');
+  return '<div class="pace-plot">' +
+    '<div class="pace-plot-title">' + escapeHtml(title) + '</div>' +
+    renderPaceSvg(rows) +
+    resetHtml +
+    '<div class="pace-legend">' + legend + '</div>' +
+  '</div>';
+}
+function renderPacePanel(data) {
+  if (!data || !Array.isArray(data.accounts)) {
+    return '<div class="pace-panel"><div class="pace-empty">нет данных</div></div>';
+  }
+  const note = (data.no_window && data.no_window.length)
+    ? '<div class="pace-note">без оконных лимитов: ' +
+      escapeHtml(data.no_window.map(paceProviderLabel).join(', ')) + '</div>'
+    : '';
+  return '<div class="pace-panel">' +
+    '<div class="pace-caption">норма vs факт · выше диагонали — быстрее календаря</div>' +
+    '<div class="pace-plots">' +
+      renderPaceColumn('5-часовое окно', '5h', data.accounts) +
+      renderPaceColumn('неделя', 'weekly', data.accounts) +
+      renderPaceColumn('месяц', 'monthly', data.accounts) +
+    '</div>' +
+    note +
+  '</div>';
+}
+function renderPaceError() {
+  document.getElementById('pace').innerHTML =
+    '<div class="pace-panel"><div class="pace-empty">нет данных</div></div>';
+}
+function loadPace() {
+  return fetch('/api/pace').then(function(res) {
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+  }).then(function(data) {
+    document.getElementById('pace').innerHTML = renderPacePanel(data);
+  }).catch(function() {
+    renderPaceError();
+  });
+}
+
+async function refresh() {
+  const btn = document.getElementById('refresh-btn');
+  if (btn && btn.disabled) return;
+  const label = btn ? btn.querySelector('.rlabel') : null;
+  if (btn) { btn.disabled = true; btn.classList.add('loading'); }
+  if (label) label.textContent = 'Обновление…';
+  let ok = true;
+  try {
+    const res = await fetch('/api/refresh', { method: 'POST' });
+    ok = res.ok;
+  } catch(e) { ok = false; }
+  await load();
+  if (btn) { btn.classList.remove('loading'); btn.disabled = false; }
+  if (label) {
+    label.textContent = ok ? 'Обновлено ✓' : 'Ошибка';
+    setTimeout(function() { label.textContent = 'Обновить'; }, 2500);
+  }
+}
+function getExpandedIds() {
+  return new Set(Array.from(document.querySelectorAll('.pcard[data-expanded="true"]')).map(function(el) { return el.id; }));
+}
+function applyExpandedIds(idSet) {
+  idSet.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.setAttribute('data-expanded', 'true');
+  });
+}
+async function load() {
+  const paceDone = loadPace();
+  try {
+    const res = await fetch('/api/summary');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+
+    applySiteTitle(data.site_title);
+    displayTz = data.display_tz || 'UTC';
+    displayTzLabel = data.display_tz_label || (displayTz === 'Europe/Moscow' ? 'МСК' : 'UTC');
+    hidePartialSpendChips = !!data.hide_partial_spend_chips;
+
+    document.getElementById('updated').textContent =
+      'обновлено: ' + fmtDateTime(data.updated_at) + ' · авто 30с';
+
+    const errs = data.errors || [];
+    document.getElementById('errors').innerHTML = errs.map(function(e) {
+      return '<div class="err">' + escapeHtml(e) + '</div>';
+    }).join('');
+
+    renderStats(data);
+
+    const wallets = data.wallets || {};
+    var expanded = getExpandedIds();
+    const cardRenderers = {
+      zai: renderZaiCard,
+      commandcode: renderCommandcodeCard,
+      kimi: renderKimiCard,
+      'opencode-go': renderOpencodeGoCard,
+      deepseek: renderDeepseekCard,
+      openrouter: renderOpenrouterCard,
+    };
+    const providerCards = CARD_ORDER.map(function(key) {
+      if (!wallets[key]) return '';
+      const render = cardRenderers[key];
+      return render ? render(wallets[key]) : '';
+    }).filter(Boolean).join('');
+    document.getElementById('providers').innerHTML = providerCards || '<div class="muted">Нет данных</div>';
+    const hasOpenrouter = !!wallets.openrouter;
+    const modelsLabel = document.getElementById('models-label');
+    const orModels = (wallets.openrouter && wallets.openrouter.models) || {};
+    modelsLabel.style.display = hasOpenrouter ? '' : 'none';
+    modelsLabel.textContent = (orModels.source === 'openrouter-key-export')
+      ? 'По моделям · OpenRouter'
+      : 'По моделям · OpenRouter · 7д';
+    const modelsEl = document.getElementById('models');
+    modelsEl.style.display = hasOpenrouter ? '' : 'none';
+    modelsEl.innerHTML = renderModelsSection(wallets.openrouter);
+    applyExpandedIds(expanded);
+  } catch(e) {
+    document.getElementById('errors').innerHTML = '<div class="err">Ошибка загрузки: ' + escapeHtml(e.message) + '</div>';
+  }
+  await paceDone;
+}
+load();
+setInterval(load, 30000);
+</script>
+</body>
+</html>

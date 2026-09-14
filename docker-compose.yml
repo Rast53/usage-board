@@ -1,0 +1,48 @@
+# usage-board — self-hosted AI usage dashboard.
+# Default mode (TLS): app + Caddy with automatic Let's Encrypt.
+#   1) cp .env.example .env   2) set DOMAIN + BASIC_AUTH_* + provider keys
+#   3) docker compose up -d   →  https://DOMAIN
+# Requires Docker Compose v2.24+ (YAML !override support).
+
+services:
+  app:
+    image: ghcr.io/rast53/usage-board:latest
+    build: .                    # used when you run `up -d --build` (no registry needed)
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      USAGE_PORT: "3210"
+      USAGE_DATA_DIR: /app/data
+      USAGE_STATIC_DIR: /app/static
+    volumes:
+      - app-data:/app/data
+    expose:
+      - "3210"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:3210/api/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"        # ACME HTTP-01 challenge + redirect to https
+      - "443:443"      # https
+      - "443:443/udp"  # http/3
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env (see .env.example)}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+
+volumes:
+  app-data:
+  caddy-data:
+  caddy-config:

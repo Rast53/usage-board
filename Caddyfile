@@ -1,0 +1,10 @@
+# Caddy config for usage-board. DOMAIN is injected from .env.
+# Automatic HTTPS via Let's Encrypt (HTTP-01): needs ports 80/443 reachable
+# and a DNS A record for DOMAIN pointing at this server.
+{
+	# email you@example.com   # uncomment to receive Let's Encrypt expiry notices
+}
+
+{$DOMAIN}
+
+reverse_proxy app:3210
