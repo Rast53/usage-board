@@ -1,0 +1,30 @@
+{
+  "verdict": "PASS",
+  "sha": "20cab255fa10e812ecdecaa04b894a155e69ae05",
+  "reasons": [
+    "AC1: Rast53/usage-board visibility=PUBLIC, isPrivate=false; infra grep on the PR head tree (20cab255) returns no matches, and a broadened grep over ALL tracked files (Caddyfile, Dockerfile, enable-tls.sh, .env.example, static/index.html included) is also empty — no ragpt/ohera/tw-msk/dockhand/tailscale-100.x traces, no LICENSE/author exception needed.",
+    "AC2: CI green on head SHA 20cab255 — check-runs test/build/compose-check succeeded (workflow run 34898859673, branch cursor/TASK-usage-board-product); `docker pull ghcr.io/rast53/usage-board:latest` on fornex-usa succeeded, digest sha256:f40cbc2822e2858a80e8503efb4b11aeed0367a6ac001bfe20c30ca4f196e1b8 (tags latest,main, pushed 2026-09-14T18:07:50Z). No legacy commit statuses exist (combined state 'pending' with zero contexts) — the check-runs are the authoritative signal.",
+    "AC3: dogfood verified on fornex-usa against the DEPLOYED endpoint https://usage.ohera.ru:8443 — with creds {\"ok\":true,\"wallets\":6,\"errors\":[]}, without creds 401, /api/summary enabled_providers = 6 live providers. DEVIATION TO FLAG: the criterion's URL without a port does NOT serve the app — fornex-usa :443 is occupied by a pre-existing xray REALITY listener (returns an *.intel.com camouflage cert, no HTTP), while host nginx serves the app on :8443 with a Let's Encrypt cert CN=usage.ohera.ru (conf /etc/nginx/sites-enabled/usage.ohera.ru.conf; :80 → 301 https://$host:8443). Substance of AC3 met; the spec URL/port should be corrected by the operator.",
+    "AC4: `docker compose --profile tls config` valid on a clean tree (fresh dir, .env from .env.example with DOMAIN=test.example.com, exactly like the CI compose-check job); base, --profile tls and app-only configs all exit 0; the tls profile resolves the caddy service with published 443.",
+    "AC5: prod untouched — https://usage.ragpt.ru/api/health still 401; https://usage.alan.ragpt.ru/api/health returns {\"ok\":true,...} with HTTP 200; on tw-msk-server containers usage-dashboard-usage-dashboard-1 and usage-dashboard-alan-usage-dashboard-1 are both Up (4 days).",
+    "AC6: PARTIAL — legacy repo now PRIVATE and dockhand credential intact; the redeploy itself was NOT exercised by me: dockhand git_credentials still holds exactly one row (id=2, name 'github-rast53', auth_type=password, user rast53, created 2026-08-05) and repository 6 (usage-dashboard) still binds credential_id=2; both usage-dashboard hooks are active push webhooks to https://dockhand.ragpt.ru/api/git/stacks/7/webhook and .../stacks/8/webhook with secret set; git_stack 7 (usage-dashboard) has webhook_enabled=1, sync_status=synced, last_commit 6bb5616, last_sync 2026-09-10T13:45Z. But no redeploy of stack 7 has run since the repo went private (2026-09-14T17:55Z): dockhand logs show deploys only for task-mcp, audit_logs/stack_events are empty, and GitHub reports 0 deliveries for hook 667508553. Firing the webhook/redeploy would recreate prod containers, which is outside the verifier's remit (no deploys), so that clause is listed as manual/skip; nothing observed indicates breakage, and the remaining confirmation is one operator push/redeploy on stack 7.",
+    "PR state: OPEN, isDraft=true, mergeable=MERGEABLE, mergeStateStatus=CLEAN, base=main, head=cursor/TASK-usage-board-product, 7 files +107/-5. Independent local test run of the PR tree in python:3.12-slim: 5 passed."
+  ],
+  "model": "deepseek-flash",
+  "tokens_in": 68621,
+  "tokens_out": 37302,
+  "cache_read": 3166720,
+  "cost_usd": 0.042175,
+  "peak": false,
+  "usage_source": "state.db",
+  "usage": {
+    "model": "deepseek-flash",
+    "tokens_in": 68621,
+    "tokens_out": 37302,
+    "cache_read": 3166720,
+    "cost_usd": 0.042175,
+    "peak": false,
+    "usage_source": "state.db",
+    "usage_missing": false
+  }
+}
