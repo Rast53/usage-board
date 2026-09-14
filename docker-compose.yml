@@ -2,6 +2,8 @@
 # Default mode (TLS): app + Caddy with automatic Let's Encrypt.
 #   1) cp .env.example .env   2) set DOMAIN + BASIC_AUTH_* + provider keys
 #   3) docker compose up -d   →  https://DOMAIN
+# Caddy is in profile "tls" (auto-enabled via app depends_on). CI validates:
+#   docker compose --profile tls config
 # Requires Docker Compose v2.24+ (YAML !override support).
 
 services:
@@ -27,6 +29,7 @@ services:
       start_period: 20s
 
   caddy:
+    profiles: ["tls"]
     image: caddy:2-alpine
     restart: unless-stopped
     ports:
