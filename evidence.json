@@ -1,0 +1,68 @@
+{
+  "schema": "evidence.v1",
+  "sha": "20cab255fa10e812ecdecaa04b894a155e69ae05",
+  "items": [
+    {
+      "id": "1",
+      "type": "test",
+      "result": "pass",
+      "checked_with": "gh repo view Rast53/usage-board --json visibility,isPrivate ; grep -rniE \"ragpt|ohera|tw-msk|dockhand|100\\.(6[0-9]|8[0-9]|9[0-9]|1[0-9][0-9])\\.\" --include='*.py' --include='*.yml' --include='*.md' --include='*.html' . ; grep -rniE <same pattern> . --exclude-dir=.git",
+      "proof": "visibility=PUBLIC, isPrivate=false, createdAt=2026-09-14T17:55:26Z. Both greps on the checked-out head tree (git rev-parse HEAD = 20cab255fa10e812ecdecaa04b894a155e69ae05) returned exit 1 = zero matching lines; the broadened scan also covered non-listed types (Caddyfile, Dockerfile, enable-tls.sh, .env.example, static/index.html) and stayed empty. No infra hostnames, no dockhand/tw-msk markers, no 100.64/10 tailnet IPs.",
+      "paths": [
+        "enable-tls.sh",
+        "app.py"
+      ]
+    },
+    {
+      "id": "2",
+      "type": "ci",
+      "result": "pass",
+      "checked_with": "gh api repos/Rast53/usage-board/commits/20cab255fa10e812ecdecaa04b894a155e69ae05/check-runs ; gh api repos/Rast53/usage-board/actions/runs?head_sha=20cab255... ; ssh fornex-usa 'docker pull ghcr.io/rast53/usage-board:latest'",
+      "proof": "Check-runs on head SHA: build=completed/success, test=completed/success, compose-check=completed/success, GitGuardian=completed/success. Workflow run 34898859673 (branch cursor/TASK-usage-board-product) conclusion=success. No legacy commit statuses (combined state 'pending' with empty statuses[] — no red context). Pull on fornex-usa: 'Status: Downloaded newer image for ghcr.io/rast53/usage-board:latest', Digest sha256:f40cbc2822e2858a80e8503efb4b11aeed0367a6ac001bfe20c30ca4f196e1b8, package public, tags latest,main. Also ran the PR test suite myself in python:3.12-slim: '5 passed'.",
+      "paths": [
+        ".github/workflows/build.yml",
+        "tests/test_app.py",
+        "pytest.ini"
+      ]
+    },
+    {
+      "id": "3",
+      "type": "test",
+      "result": "pass",
+      "checked_with": "ssh fornex-usa 'curl -s -u $BASIC_AUTH_USER:$BASIC_AUTH_PASSWORD https://usage.ohera.ru:8443/api/health' ; curl -s -o /dev/null -w '%{http_code}' https://usage.ohera.ru:8443/api/health ; curl -s -u <creds> https://usage.ohera.ru:8443/api/summary ; curl -sv https://usage.ohera.ru/api/health (port 443 control) ; ls /etc/letsencrypt/live/",
+      "proof": "Deployed endpoint (host nginx + LE, app-only container usage-board-app-1 healthy): with creds → {\"ok\":true,\"updated_at\":\"2026-09-14T21:31:10Z\",\"wallets\":6,\"errors\":[],\"quota_probe_updated_at\":\"2026-09-14T21:27:10Z\"}; without creds → HTTP 401; TLS issuer C=US,O=Let's Encrypt,CN=YE2 with CN=usage.ohera.ru (Let's Encrypt confirmed). /api/summary: enabled_providers length 6 = deepseek, openrouter, zai, commandcode, kimi, opencode-go; all 6 wallets ok=true/status=active with probe timestamps 2026-09-14T21:27:0xZ and errors=[]. Control on the criterion's literal URL (port 443): fornex-usa :443 is held by xray (ss -ltnp shows xray-linux-amd6 on *:443), the TLS handshake presents subject CN=*.intel.com O=Intel Corporation and no HTTP response (curl code 000) — so the port-less URL in the spec is not the serving endpoint; nginx's :80 block 301-redirects to https://$host:8443.",
+      "paths": [
+        "docker-compose.app-only.yml",
+        "enable-tls.sh"
+      ]
+    },
+    {
+      "id": "4",
+      "type": "test",
+      "result": "pass",
+      "checked_with": "clean dir /tmp/ub-clean with .env from .env.example (DOMAIN=test.example.com, mirroring CI): docker compose -f docker-compose.yml config ; docker compose --profile tls -f docker-compose.yml config ; docker compose -f docker-compose.yml -f docker-compose.app-only.yml config ; docker compose version",
+      "proof": "All three configs exit 0 on a fresh tree (Docker Compose v5.5.1). `--profile tls config` renders the caddy service with profiles:[tls], image caddy:2-alpine and target 443 published 443 (TCP+UDP); resolution requires DOMAIN, exactly as the CI compose-check job supplies it (cp .env.example .env; sed DOMAIN). Without DOMAIN the command fails by design (${DOMAIN:?...}) — that is the documented contract, not a defect.",
+      "paths": [
+        "docker-compose.yml",
+        ".github/workflows/build.yml",
+        ".env.example"
+      ]
+    },
+    {
+      "id": "5",
+      "type": "test",
+      "result": "pass",
+      "checked_with": "curl -s -o /dev/null -w '%{http_code}' https://usage.ragpt.ru/api/health ; curl -s https://usage.alan.ragpt.ru/api/health ; ssh tw-msk-server 'docker ps --format \"{{.Names}}\\t{{.Status}}\"'",
+      "proof": "https://usage.ragpt.ru/api/health → 401 (unchanged, prod auth intact). https://usage.alan.ragpt.ru/api/health → HTTP 200 with {\"ok\":true,\"updated_at\":\"2026-09-14T21:31:08Z\",\"wallets\":1,\"errors\":[]}. On tw-msk-server: usage-dashboard-usage-dashboard-1 Up 4 days and usage-dashboard-alan-usage-dashboard-1 Up 4 days — both legacy prod containers alive.",
+      "paths": []
+    },
+    {
+      "id": "6",
+      "type": "manual",
+      "result": "skip",
+      "checked_with": "gh repo view Rast53/usage-dashboard --json visibility ; sqlite3 -header -column file:<dockhand.db>?mode=ro 'SELECT id,name,auth_type,username,created_at FROM git_credentials' / '... FROM git_stacks' / '... FROM git_repositories' ; gh api repos/Rast53/usage-dashboard/hooks ; gh api repos/Rast53/usage-dashboard/hooks/667508553/deliveries ; ssh tw-msk-server 'docker logs dockhand' ; ssh tw-msk-server 'docker ps'",
+      "proof": "VERIFIED: Rast53/usage-dashboard visibility=PRIVATE (isPrivate=true, updatedAt 2026-09-14T17:55:57Z). dockhand git_credentials still has exactly one row — id=2, name='github-rast53', auth_type=password, username=rast53, created 2026-08-05T08:47:27Z — and git_repositories row 6 (https://github.com/Rast53/usage-dashboard.git) still binds credential_id=2. Both repo hooks are active push webhooks: id 667508553 → https://dockhand.ragpt.ru/api/git/stacks/7/webhook and id 672385619 → stacks/8/webhook, secret set; git_stacks row 7 'usage-dashboard' has webhook_enabled=1, sync_status=synced, last_commit 6bb5616, last_sync 2026-09-10T13:45:40Z. dockhand container Up 6 days (healthy). NOT EXERCISED: no redeploy of stack 7 happened after the repo went private — dockhand logs contain DEPLOY GIT STACK events only for task-mcp, audit_logs and stack_events are empty, and GitHub reports 0 deliveries for hook 667508553; the webhook endpoint answers 401 without the secret (armed, not fired). Triggering the button/CLI redeploy would recreate prod containers, which is outside this verifier's remit (no deploys), so the 'redeploy → stack healthy' clause is reported as skip rather than pass. No evidence of breakage; confirmation needs one operator push/redeploy of stack 7.",
+      "paths": []
+    }
+  ]
+}
