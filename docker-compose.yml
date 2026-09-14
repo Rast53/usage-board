@@ -19,7 +19,8 @@ services:
     expose:
       - "3210"
     healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:3210/api/health', timeout=5)"]
+      # 401 is fine: basic auth is enabled. Anything else (conn refused, 5xx) = unhealthy.
+      test: ["CMD", "python3", "-c", "import urllib.request,urllib.error,sys;\ntry: urllib.request.urlopen('http://127.0.0.1:3210/api/health', timeout=5)\nexcept urllib.error.HTTPError as e: sys.exit(0 if e.code==401 else 1)"]
       interval: 30s
       timeout: 10s
       retries: 3
