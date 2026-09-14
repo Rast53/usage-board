@@ -1,7 +1,6 @@
 .git
+.venv
 data
 *.jsonl
 __pycache__
 .env
-*
-!.env.example
