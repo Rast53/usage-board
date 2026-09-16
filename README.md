@@ -95,6 +95,33 @@ docker compose pull && docker compose up -d
 
 `docker compose up -d --build` builds from source instead (offline-friendly).
 
+## Autodeploy (repull) on a host
+
+The `app` service sets `pull_policy: always`, so a plain `docker compose up -d`
+always rechecks the registry for `:latest`. To move a host (e.g. **fornex-usa**)
+to the image of the newest `main` merge with no manual action, install the
+bundled systemd timer:
+
+```bash
+sudo install -m 644 deploy/usage-board-autodeploy.service \
+                    deploy/usage-board-autodeploy.timer /etc/systemd/system/
+# edit WorkingDirectory/COMPOSE_FILES in the unit if the checkout is not /opt/usage-board
+sudo systemctl daemon-reload
+sudo systemctl enable --now usage-board-autodeploy.timer
+```
+
+Every 5 minutes `deploy/autodeploy.sh` repulls the image, recreates the app only
+when the digest changed, waits for health, and prints the running revision:
+
+```bash
+docker inspect usage-board-app-1 \
+  --format '{{index .Config.Labels "org.opencontainers.image.revision"}}'
+```
+
+See [`deploy/README.md`](deploy/README.md) for the one-shot run and the
+`EXPECT_REVISION` hard gate. The script never reads or writes `.env`; secrets
+stay in the host file exactly as for a manual `docker compose up -d`.
+
 ## Security notes
 
 - Provider keys live in `.env` on your server; the dashboard polls provider
