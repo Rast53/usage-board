@@ -1,0 +1,45 @@
+{
+  "schema": "evidence.v1",
+  "sha": "07db3a70bf865ec5127ecd1d0ed8787d24811e67",
+  "items": [
+    {
+      "id": "1",
+      "type": "test",
+      "result": "pass",
+      "checked_with": "cd /opt/hermes/verify-workspace/ub-usage-board (HEAD 07db3a70) && /opt/hermes/verify-workspace/uba-venv/bin/python -m pytest tests/test_limits_api.py -q; CI check-runs on the same SHA (jobs test/compose-check/build = success); verifier harness /opt/hermes/verify-workspace/ub2-ev/probe_error_path.py (patched cached state)",
+      "proof": "9 passed in 0.62s. Envelope asserts set(providers.keys()) == set(KNOWN_PROVIDERS) with 6 stable ids; error wallet -> providers.zai.status='error', message in top-level errors, HTTP 200 (no 500); normalizer/total-failure fallbacks green. Independent probe reproduced 200 + errors propagation and confirmed PROVIDERS=zai,deepseek narrows keys to ['deepseek','zai'].",
+      "paths": [
+        "tests/test_limits_api.py"
+      ]
+    },
+    {
+      "id": "2",
+      "type": "manual",
+      "result": "pass",
+      "checked_with": "live instance from PR-branch checkout: uvicorn app:app --host 127.0.0.1 --port 3899 (same entrypoint as Dockerfile CMD) + curl -s http://127.0.0.1:3899/api/limits | jq '.providers | keys'",
+      "proof": "returned [commandcode, deepseek, kimi, opencode-go, openrouter, zai] (6 stable ids), HTTP 200; body has no key/token/secret fields; errors=[] on a dev instance without provider keys. Full body saved at /opt/hermes/verify-workspace/ub2-ev/ac2_limits_full.json.",
+      "paths": []
+    },
+    {
+      "id": "3",
+      "type": "test",
+      "result": "pass",
+      "checked_with": "pytest tests/test_limits_api.py::test_legacy_usage_route_and_format_unchanged; live compare of /api/usage vs /api/summary on head (3899) and vs main e8b4cad (3898); git diff origin/main...HEAD -- app.py",
+      "proof": "/api/usage absent on main (404); PR only adds an alias route, /api/summary code untouched (0 deletions, 3 additive hunks). Live: /api/usage body identical to /api/summary modulo volatile quota_probe_updated_at; key set identical to main's /api/summary; 'limits' key absent from the legacy envelope. Head full suite 14 passed vs main baseline 5 passed.",
+      "paths": [
+        "app.py",
+        "tests/test_limits_api.py"
+      ]
+    },
+    {
+      "id": "4",
+      "type": "test",
+      "result": "pass",
+      "checked_with": "pytest tests/test_limits_api.py::test_limits_requires_token_when_configured + ::test_token_only_guards_limits_route; live instance on 127.0.0.1:3897 started with AGENT_API_TOKEN set (curl code matrix)",
+      "proof": "no token 401 ({\"detail\":\"missing or invalid agent API token\"}), wrong Bearer 401, valid Bearer/X-Agent-Token/X-Api-Token 200; /api/health, /api/summary, /api/usage, /api/providers all 200 without a token. Token is read per request from env (no restart needed).",
+      "paths": [
+        "tests/test_limits_api.py"
+      ]
+    }
+  ]
+}
