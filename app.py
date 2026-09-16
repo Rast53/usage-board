@@ -68,6 +68,7 @@ KNOWN_PROVIDERS: tuple[str, ...] = (
     "commandcode",
     "kimi",
     "opencode-go",
+    "cursor",
 )
 WALLET_PROBE_KEYS = tuple(f"{name}-main" for name in KNOWN_PROVIDERS)
 
@@ -78,6 +79,12 @@ KIMI_CODE_DEFAULT_BASE_URL = "https://api.kimi.com/coding/v1"
 KIMI_CODE_USAGES_PATH = "/usages"
 OPENCODE_GO_DEFAULT_BASE_URL = "https://opencode.ai/zen/go/v1"
 OPENCODE_GO_USAGE_PATH = "/usage"
+# Cursor has no public usage API: the dashboard reads a Connect RPC with the
+# browser session cookie. We read the same read-only endpoints (undocumented,
+# best-effort) and derive three metrics: plan total %, Cursor-model %, other %.
+CURSOR_DEFAULT_BASE_URL = "https://api2.cursor.sh"
+CURSOR_USAGE_PATH = "/aiserver.v1.DashboardService/GetCurrentPeriodUsage"
+CURSOR_SUMMARY_URL = "https://cursor.com/api/usage-summary"
 # Published Go windows (docs 2026-08-25). The usage API returns used %, not USD.
 OPENCODE_GO_CAPS: dict[str, float] = {
     "session": 12.0,
@@ -3401,6 +3408,425 @@ def build_opencode_go_wallet(probe: dict[str, Any] | None) -> dict[str, Any] | N
     }
 
 
+def get_cursor_proxy() -> str | None:
+    """HTTP CONNECT or SOCKS5/SOCKS5h proxy for cursor.com / api2.cursor.sh."""
+    raw = os.environ.get("CURSOR_PROXY", "").strip()
+    return raw or None
+
+
+def get_cursor_session_token() -> str | None:
+    """Env CURSOR_SESSION_TOKEN: WorkosCursorSessionToken or bare access token."""
+    raw = os.environ.get("CURSOR_SESSION_TOKEN", "").strip()
+    return raw or None
+
+
+def get_cursor_base_url() -> str:
+    raw = os.environ.get("CURSOR_BASE_URL", "").strip().rstrip("/")
+    return raw or CURSOR_DEFAULT_BASE_URL
+
+
+def cursor_usage_url() -> str:
+    base = get_cursor_base_url()
+    if base.endswith(CURSOR_USAGE_PATH):
+        return base
+    return base + CURSOR_USAGE_PATH
+
+
+def _cursor_token_parts(token: str) -> tuple[str | None, str]:
+    """Split ``accountId::jwt`` (optionally URL-encoded) into (account, jwt)."""
+    raw = unquote(str(token).strip())
+    if "::" in raw:
+        account, _, jwt = raw.partition("::")
+        return (account.strip() or None, jwt.strip() or raw)
+    return None, raw
+
+
+def _cursor_auth_headers(token: str, *, json_body: bool) -> dict[str, str]:
+    """Headers for the Connect RPC / dashboard REST calls.
+
+    The session token may be a bare access token (api2 Bearer) or the
+    ``WorkosCursorSessionToken`` cookie value (``accountId::jwt``). Send both
+    forms so either source works.
+    """
+    _account, jwt = _cursor_token_parts(token)
+    headers: dict[str, str] = {
+        "Accept": "application/json",
+        "User-Agent": DASHBOARD_USER_AGENT,
+        "Authorization": f"Bearer {jwt}",
+        "Cookie": f"WorkosCursorSessionToken={str(token).strip()}",
+    }
+    if json_body:
+        headers["Content-Type"] = "application/json"
+        headers["Connect-Protocol-Version"] = "1"
+    else:
+        headers["Origin"] = "https://cursor.com"
+        headers["Referer"] = "https://cursor.com/dashboard?tab=usage"
+    return headers
+
+
+def _cursor_percent(value: Any) -> float | None:
+    pct = _as_float(value)
+    if pct is None:
+        return None
+    return round(max(0.0, pct), 2)
+
+
+def _cursor_ts_iso(value: Any) -> str | None:
+    """Cursor sends epoch-ms (dashboard) or ISO strings (REST summary)."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return _ms_to_iso(value)
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.isdigit() or (text.startswith("-") and text[1:].isdigit()):
+        return _ms_to_iso(int(text))
+    parsed = parse_snapshot_ts(text)
+    return parsed[1] if parsed else None
+
+
+def _cursor_find_plan_usage(
+    data: Any,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Locate the object carrying planUsage / *PercentUsed fields.
+
+    Accepts the Connect-RPC dashboard response (``planUsage``), wrapped variants
+    (``usage``/``data``/``result``) and the REST ``individualUsage.plan`` shape.
+    Returns ``(envelope, plan)``.
+    """
+    if not isinstance(data, dict):
+        return None, None
+    plan = data.get("planUsage")
+    if isinstance(plan, dict):
+        return data, plan
+    for wrapper in ("usage", "data", "result", "response", "payload"):
+        inner = data.get(wrapper)
+        if isinstance(inner, dict):
+            envelope, found = _cursor_find_plan_usage(inner)
+            if found is not None:
+                return envelope or inner, found
+    individual = data.get("individualUsage")
+    if isinstance(individual, dict):
+        inner_plan = individual.get("plan")
+        if isinstance(inner_plan, dict):
+            return data, inner_plan
+    team = data.get("teamUsage")
+    if isinstance(team, dict) and isinstance(team.get("pooled"), dict):
+        return data, team
+    return None, None
+
+
+def parse_cursor_dashboard_usage(data: Any) -> dict[str, Any]:
+    """Normalize a Cursor DashboardUsage response into card metrics.
+
+    Reads ``planUsage.totalPercentUsed`` / ``autoPercentUsed`` (Cursor models) /
+    ``apiPercentUsed`` (other models) plus the USD-cent allowance and billing
+    cycle. Falls back to the REST ``individualUsage.plan`` shape and to
+    ``used/limit`` when ``totalPercentUsed`` is absent. Percentages are already
+    in percent units; money fields stay in cents.
+    """
+    out: dict[str, Any] = {
+        "enabled": True,
+        "total_percent": None,
+        "cursor_models_percent": None,
+        "other_models_percent": None,
+        "limit_cents": None,
+        "total_spend_cents": None,
+        "remaining_cents": None,
+        "billing_cycle_start": None,
+        "billing_cycle_end": None,
+        "plan_label": None,
+    }
+    if not isinstance(data, dict):
+        return out
+    if data.get("enabled") is False:
+        out["enabled"] = False
+        return out
+
+    envelope, plan = _cursor_find_plan_usage(data)
+    if plan is None:
+        return out
+    source = envelope if isinstance(envelope, dict) else data
+
+    total = _cursor_percent(_pick(plan, "totalPercentUsed", "total_percent_used"))
+    cursor_models = _cursor_percent(_pick(plan, "autoPercentUsed", "auto_percent_used"))
+    other_models = _cursor_percent(_pick(plan, "apiPercentUsed", "api_percent_used"))
+    limit_cents = _as_float(_pick(plan, "limit"))
+    spend_cents = _as_float(
+        _pick(plan, "totalSpend", "total_spend", "includedSpend", "included_spend")
+    )
+    remaining_cents = _as_float(_pick(plan, "remaining"))
+
+    # REST summary shape nests dollars under plan.used / overall / pooled.
+    if limit_cents is None or spend_cents is None or remaining_cents is None:
+        for bucket in (
+            plan,
+            source.get("individualUsage"),
+            source.get("teamUsage"),
+            plan.get("pooled"),
+            plan.get("overall"),
+        ):
+            if not isinstance(bucket, dict):
+                continue
+            candidate = _as_float(_pick(bucket, "limit"))
+            if candidate is None:
+                continue
+            if limit_cents is None:
+                limit_cents = candidate
+            if spend_cents is None:
+                spend_cents = _as_float(_pick(bucket, "used", "used_cents"))
+            if remaining_cents is None:
+                remaining_cents = _as_float(
+                    _pick(bucket, "remaining", "remaining_cents")
+                )
+            break
+
+    if total is None:
+        used_cents = spend_cents
+        if used_cents is None and limit_cents is not None and remaining_cents is not None:
+            used_cents = max(0.0, limit_cents - remaining_cents)
+        if used_cents is not None and limit_cents and limit_cents > 0:
+            total = round(max(0.0, used_cents / limit_cents * 100.0), 2)
+
+    plan_label = _pick(source, "membershipType", "planName", "plan_name")
+    if not isinstance(plan_label, str) or not plan_label.strip():
+        plan_label = None
+
+    out.update(
+        {
+            "total_percent": total,
+            "cursor_models_percent": cursor_models,
+            "other_models_percent": other_models,
+            "limit_cents": limit_cents,
+            "total_spend_cents": spend_cents,
+            "remaining_cents": remaining_cents,
+            "billing_cycle_start": _cursor_ts_iso(
+                _pick(
+                    source,
+                    "billingCycleStart",
+                    "billing_cycle_start",
+                    "cycleStart",
+                    "startOfMonth",
+                )
+            ),
+            "billing_cycle_end": _cursor_ts_iso(
+                _pick(source, "billingCycleEnd", "billing_cycle_end", "cycleEnd")
+            ),
+            "plan_label": plan_label,
+        }
+    )
+    return out
+
+
+def _cursor_api_error(data: Any, err: str | None, st: int | None) -> str:
+    if isinstance(data, dict):
+        message = data.get("message") or data.get("error")
+        if isinstance(message, dict):
+            message = message.get("message") or message.get("code")
+        if message:
+            return f"usage API: {st} {message}".strip()
+    if isinstance(data, str) and data.lstrip().startswith("<"):
+        return f"usage API: {st} HTML (not JSON)".strip()
+    return f"usage API: {st} {err or data}".strip()
+
+
+def _cursor_fetch_usage(token: str, proxy: str | None) -> dict[str, Any]:
+    """Fetch one of the Cursor usage endpoints, trying the Connect RPC first.
+
+    Returns ``{status, data, error, endpoint}`` for the first HTTP 200 JSON
+    response; otherwise the last observed failure. HTTP 401/403 is reported as
+    ``status`` so the caller can label the card "token expired".
+    """
+    connect_headers = _cursor_auth_headers(token, json_body=True)
+    rest_headers = _cursor_auth_headers(token, json_body=False)
+    candidates: list[tuple[str, str, str, bytes | None, dict[str, str]]] = [
+        (
+            "connect",
+            cursor_usage_url(),
+            "POST",
+            b"{}",
+            connect_headers,
+        ),
+        (
+            "usage-summary",
+            CURSOR_SUMMARY_URL,
+            "GET",
+            None,
+            rest_headers,
+        ),
+    ]
+    last: dict[str, Any] = {"status": None, "data": None, "error": None, "endpoint": None}
+    for endpoint, url, method, body, headers in candidates:
+        st, _hdrs, raw, err = http_request(
+            url,
+            method=method,
+            body=body,
+            headers=headers,
+            proxy=proxy,
+            timeout=15.0,
+        )
+        text = raw.decode("utf-8", errors="replace") if raw else ""
+        try:
+            data: Any = json.loads(text) if text else None
+        except Exception:
+            data = text
+        last = {"status": st, "data": data, "error": err, "endpoint": endpoint}
+        if st == 200 and isinstance(data, dict):
+            parsed = parse_cursor_dashboard_usage(data)
+            if _cursor_has_metrics(parsed):
+                return last
+    return last
+
+
+def _cursor_has_metrics(parsed: dict[str, Any]) -> bool:
+    return any(
+        parsed.get(key) is not None
+        for key in ("total_percent", "cursor_models_percent", "other_models_percent")
+    )
+
+
+def _cursor_percent_window(
+    kind: str,
+    label: str,
+    used_pct: float | None,
+    reset_at: str | None,
+) -> dict[str, Any] | None:
+    if used_pct is None:
+        return None
+    remaining = round(max(0.0, 100.0 - used_pct), 2)
+    return {
+        "kind": kind,
+        "used_percent": round(used_pct, 2),
+        "remaining_percent": remaining,
+        "cap": 100.0,
+        "next_reset_at": reset_at,
+        "summary": f"{used_pct:.1f}% used ({label})",
+    }
+
+
+def probe_cursor_usage() -> dict[str, Any]:
+    """Fetch Cursor plan usage from the dashboard session token.
+
+    Primary: POST https://api2.cursor.sh/…/DashboardService/GetCurrentPeriodUsage
+    (Bearer + session cookie). Fallback: GET https://cursor.com/api/usage-summary
+    (session cookie). Both are undocumented; 401/403 labels the card expired.
+    """
+    result: dict[str, Any] = {
+        "provider": "cursor",
+        "email": "cursor-main",
+        "probed_at": now_iso(),
+        "ok": False,
+        "kind": "cursor-usage",
+        "status": "error",
+        "plan_label": None,
+        "total": None,
+        "cursor_models": None,
+        "other_models": None,
+        "billing_cycle_start": None,
+        "billing_cycle_end": None,
+        "error": None,
+        "source": "cursor-dashboard-usage",
+    }
+    token = get_cursor_session_token()
+    if not token:
+        result["status"] = "manual"
+        result["error"] = "CURSOR_SESSION_TOKEN not set"
+        return result
+
+    proxy = get_cursor_proxy()
+    result["via"] = {
+        "base_url": get_cursor_base_url(),
+        "proxy": redact_proxy_url(proxy),
+    }
+
+    fetched = _cursor_fetch_usage(token, proxy)
+    st = fetched.get("status")
+    data = fetched.get("data")
+    if st in (401, 403):
+        result["status"] = "expired"
+        result["error"] = (
+            f"CURSOR_SESSION_TOKEN истёк — обновите токен (HTTP {st})"
+        )
+        return result
+    if st != 200 or not isinstance(data, dict):
+        result["error"] = _cursor_api_error(data, fetched.get("error"), st)
+        return result
+
+    parsed = parse_cursor_dashboard_usage(data)
+    if not parsed.get("enabled"):
+        result["error"] = "Cursor: нет активной подписки"
+        return result
+    if not _cursor_has_metrics(parsed):
+        result["error"] = "usage API: planUsage без метрик"
+        return result
+
+    reset_at = parsed.get("billing_cycle_end")
+    total = _cursor_percent_window("total", "план", parsed.get("total_percent"), reset_at)
+    cursor_models = _cursor_percent_window(
+        "cursor_models", "Cursor-модели", parsed.get("cursor_models_percent"), reset_at
+    )
+    other_models = _cursor_percent_window(
+        "other_models", "другие модели", parsed.get("other_models_percent"), reset_at
+    )
+
+    plan_label = parsed.get("plan_label")
+    if not isinstance(plan_label, str) or not plan_label.strip():
+        plan_label = "Cursor"
+
+    result["ok"] = True
+    result["status"] = "active"
+    result["plan_label"] = plan_label
+    result["total"] = total
+    result["cursor_models"] = cursor_models
+    result["other_models"] = other_models
+    result["billing_cycle_start"] = parsed.get("billing_cycle_start")
+    result["billing_cycle_end"] = reset_at
+    result["limit_cents"] = parsed.get("limit_cents")
+    result["remaining_cents"] = parsed.get("remaining_cents")
+    result["source"] = f"cursor-{fetched.get('endpoint') or 'dashboard-usage'}"
+    parts = [win["summary"] for win in (total, cursor_models, other_models) if win]
+    result["remaining_summary"] = f"{plan_label} · " + " · ".join(parts) if parts else plan_label
+    return result
+
+
+def build_cursor_wallet(probe: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not probe:
+        return None
+    status = probe.get("status") or ("active" if probe.get("ok") else "error")
+    return {
+        "provider": "cursor",
+        "email": "cursor-main",
+        "name": "Cursor",
+        "kind": "cursor-usage",
+        "status": status,
+        "ok": bool(probe.get("ok")),
+        "plan_label": probe.get("plan_label") or "Cursor",
+        "total": probe.get("total") or None,
+        "cursor_models": probe.get("cursor_models") or None,
+        "other_models": probe.get("other_models") or None,
+        "billing_cycle_start": probe.get("billing_cycle_start"),
+        "billing_cycle_end": probe.get("billing_cycle_end"),
+        "remaining_summary": probe.get("remaining_summary") or "",
+        "error": probe.get("error"),
+        "probed_at": probe.get("probed_at"),
+        "spend_24h": _empty_spend(
+            USAGE_WINDOW_HOURS, "Cursor: dashboard usage has no USD history"
+        ),
+        "spend_7d": _empty_spend(
+            USAGE_WINDOW_7D_HOURS, "Cursor: dashboard usage has no USD history"
+        ),
+        "spend_series_7d": _empty_spend_series(
+            "%", "Cursor: dashboard usage has no USD history"
+        ),
+        "models": models_unavailable(
+            "Cursor GetCurrentPeriodUsage has no per-model breakdown"
+        ),
+        "source": probe.get("source") or "cursor-dashboard-usage",
+        "via": probe.get("via"),
+    }
+
+
 def _probe_cache_stale(
     cache: dict[str, Any],
     required_keys: tuple[str, ...] | list[str] | None = None,
@@ -3426,6 +3852,7 @@ _PROVIDER_PROBE_SPECS: tuple[tuple[str, str, str], ...] = (
     ("commandcode", "probe_commandcode_credits", "commandcode-credits-probe"),
     ("kimi", "probe_kimi_usage", "kimi-usage-probe"),
     ("opencode-go", "probe_opencode_go_usage", "opencode-go-usage-probe"),
+    ("cursor", "probe_cursor_usage", "cursor-usage-probe"),
 )
 _PROVIDER_KEY_GETTERS: dict[str, Any] = {
     "deepseek": get_deepseek_api_key,
@@ -3434,6 +3861,7 @@ _PROVIDER_KEY_GETTERS: dict[str, Any] = {
     "commandcode": get_commandcode_api_key,
     "kimi": get_kimi_api_key,
     "opencode-go": get_opencode_go_api_key,
+    "cursor": get_cursor_session_token,
 }
 
 _PROVIDER_NOTES: tuple[tuple[str, str], ...] = (
@@ -3461,6 +3889,10 @@ _PROVIDER_NOTES: tuple[tuple[str, str], ...] = (
         "opencode-go",
         "OpenCode Go wallet: monthly remaining + 5h/weekly windows from /zen/go/v1/usage; 24h/7d from monthly used_usd snapshots; no per-model.",
     ),
+    (
+        "cursor",
+        "Cursor wallet: plan total % + Cursor-model % + other-model % from the dashboard usage API (session token); no USD history or per-model breakdown.",
+    ),
 )
 
 
@@ -3472,6 +3904,7 @@ def _wallet_builders() -> dict[str, Any]:
         "commandcode": build_commandcode_wallet,
         "kimi": build_kimi_wallet,
         "opencode-go": build_opencode_go_wallet,
+        "cursor": build_cursor_wallet,
     }
 
 
@@ -3778,6 +4211,7 @@ _PROVIDER_LABELS: dict[str, str] = {
     "commandcode": "Command Code",
     "kimi": "Kimi Coding",
     "opencode-go": "OpenCode Go",
+    "cursor": "Cursor",
 }
 
 # (wallet field, limit id, label, unit) — quota windows exposed to agents.
@@ -3800,6 +4234,11 @@ _PROVIDER_LIMIT_WINDOWS: dict[str, tuple[tuple[str, str, str, str], ...]] = {
         ("session", "session", "5h", "usd"),
         ("weekly", "weekly", "weekly", "usd"),
         ("monthly", "monthly", "monthly", "usd"),
+    ),
+    "cursor": (
+        ("total", "total", "plan", "percent"),
+        ("cursor_models", "cursor_models", "cursor models", "percent"),
+        ("other_models", "other_models", "other models", "percent"),
     ),
 }
 
