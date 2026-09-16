@@ -12,6 +12,7 @@ Supported providers (a card appears only for the keys you provide):
 | Command Code GOAT | monthly credits + 5h / weekly windows |
 | Kimi Coding | weekly quota + 5h window |
 | OpenCode Go | monthly remaining + 5h / weekly windows |
+| Cursor | plan total % + Cursor-model % + other-model % |
 | DeepSeek | balance + 24h/7d spend |
 | OpenRouter | credits, key usage, per-model table |
 
@@ -98,6 +99,9 @@ docker compose pull && docker compose up -d
 
 - Provider keys live in `.env` on your server; the dashboard polls provider
   APIs read-only (balance/quota/usage endpoints).
+- Cursor has no API key: set `CURSOR_SESSION_TOKEN` to your browser session
+  token; its undocumented dashboard usage API is read-only. Refresh the token
+  when it expires (the card then shows «токен истёк»).
 - Set `BASIC_AUTH_USER`/`BASIC_AUTH_PASSWORD` whenever the dashboard is
   reachable from the internet — otherwise anyone can see your spend.
 - UI is Russian-first (English UI is a possible contribution).
@@ -120,8 +124,8 @@ All routes are protected by basic auth when configured.
 
 A stable JSON envelope for automation. It always lists **every enabled
 provider** under its stable id (`deepseek`, `openrouter`, `zai`,
-`commandcode`, `kimi`, `opencode-go`) even when a key is missing or a probe
-failed, so callers can rely on the key set:
+`commandcode`, `kimi`, `opencode-go`, `cursor`) even when a key is missing or a
+probe failed, so callers can rely on the key set:
 
 ```json
 {
