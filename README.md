@@ -106,6 +106,8 @@ docker compose pull && docker compose up -d
 
 - `GET /api/health` — status
 - `GET /api/summary` — wallets + errors + site settings
+- `GET /api/usage` — alias of `/api/summary` (legacy envelope, unchanged)
+- `GET /api/limits` — **machine-readable limits for agents** (see below)
 - `GET /api/providers` — provider metadata
 - `GET /api/wallets` — all enabled providers
 - `GET /api/quota` — cached quota probes
@@ -113,6 +115,54 @@ docker compose pull && docker compose up -d
 - `POST /api/refresh` — force a refresh
 
 All routes are protected by basic auth when configured.
+
+### `/api/limits` (agent API)
+
+A stable JSON envelope for automation. It always lists **every enabled
+provider** under its stable id (`deepseek`, `openrouter`, `zai`,
+`commandcode`, `kimi`, `opencode-go`) even when a key is missing or a probe
+failed, so callers can rely on the key set:
+
+```json
+{
+  "schema_version": 1,
+  "updated_at": "2026-01-01T00:00:00Z",
+  "generated_at": "2026-01-01T00:00:00Z",
+  "providers": {
+    "zai": {
+      "id": "zai",
+      "label": "Z.AI GLM Coding",
+      "kind": "coding-quota",
+      "configured": true,
+      "status": "active",
+      "ok": true,
+      "error": null,
+      "limits": [
+        {
+          "id": "session", "label": "5h", "unit": "percent",
+          "used": 10.0, "limit": 100.0, "remaining": 90.0,
+          "used_percent": 10.0, "remaining_percent": 90.0,
+          "reset_at": "2026-01-01T05:00:00Z", "exceeded": false
+        }
+      ]
+    }
+  },
+  "errors": []
+}
+```
+
+Provider failures are reported per entry (`status: "error"`, `error`) and in
+the top-level `errors` list — the route never returns a 500. It performs no
+network I/O; data comes from the cached poller state.
+
+Set `AGENT_API_TOKEN` to require a token on this route only (other routes stay
+public). Send it as `Authorization: Bearer <token>`, `X-Agent-Token` or
+`X-Api-Token`; without a token the route answers `401`.
+
+```bash
+curl -s -H "Authorization: Bearer $AGENT_API_TOKEN" https://your.domain/api/limits \
+  | jq '.providers | keys'
+```
 
 ## Development
 
