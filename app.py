@@ -3763,6 +3763,321 @@ def build_pace_payload(
     }
 
 
+# --- Agent API: machine-readable limits (/api/limits) -----------------------
+# The envelope always lists every *enabled* provider (PROVIDERS allowlist) under
+# its stable id from KNOWN_PROVIDERS, even when no key/probe data is available,
+# so agents can rely on the key set. Provider failures are reported per entry
+# and in the top-level "errors" list instead of surfacing a 500.
+LIMITS_SCHEMA_VERSION = 1
+AGENT_TOKEN_ENV = "AGENT_API_TOKEN"
+
+_PROVIDER_LABELS: dict[str, str] = {
+    "deepseek": "DeepSeek API",
+    "openrouter": "OpenRouter",
+    "zai": "Z.AI GLM Coding",
+    "commandcode": "Command Code",
+    "kimi": "Kimi Coding",
+    "opencode-go": "OpenCode Go",
+}
+
+# (wallet field, limit id, label, unit) — quota windows exposed to agents.
+_PROVIDER_LIMIT_WINDOWS: dict[str, tuple[tuple[str, str, str, str], ...]] = {
+    "zai": (
+        ("session", "session", "5h", "percent"),
+        ("weekly", "weekly", "weekly", "percent"),
+        ("mcp", "mcp", "mcp", "requests"),
+    ),
+    "commandcode": (
+        ("session", "session", "5h", "usd"),
+        ("weekly", "weekly", "weekly", "usd"),
+        ("monthly", "monthly", "monthly", "usd"),
+    ),
+    "kimi": (
+        ("session", "session", "5h", "requests"),
+        ("weekly", "weekly", "weekly", "requests"),
+    ),
+    "opencode-go": (
+        ("session", "session", "5h", "usd"),
+        ("weekly", "weekly", "weekly", "usd"),
+        ("monthly", "monthly", "monthly", "usd"),
+    ),
+}
+
+
+def _limit_window_entry(
+    limit_id: str,
+    label: str,
+    unit: str,
+    raw: Any,
+) -> dict[str, Any] | None:
+    """Normalize one provider window (session/weekly/monthly/mcp) for agents."""
+    if not isinstance(raw, dict):
+        return None
+    cap = _as_float(raw.get("cap"))
+    if cap is None:
+        cap = _as_float(raw.get("limit"))
+    if cap is None:
+        cap = _as_float(raw.get("usage"))
+    used = _as_float(raw.get("used"))
+    if used is None:
+        used = _as_float(raw.get("used_usd"))
+    if used is None:
+        used = _as_float(raw.get("currentValue"))
+    remaining = _as_float(raw.get("remaining"))
+    if remaining is None:
+        remaining = _as_float(raw.get("remaining_usd"))
+    if used is None and cap is not None and remaining is not None:
+        used = round(max(0.0, cap - remaining), 4)
+    if remaining is None and cap is not None and used is not None:
+        remaining = round(max(0.0, cap - used), 4)
+    used_pct = _as_float(raw.get("used_percent"))
+    rem_pct = _as_float(raw.get("remaining_percent"))
+    if used_pct is None and cap and used is not None:
+        used_pct = round(used / cap * 100.0, 2)
+    if rem_pct is None and cap and remaining is not None:
+        rem_pct = round(remaining / cap * 100.0, 2)
+    exceeded = raw.get("exceeded")
+    return {
+        "id": limit_id,
+        "label": label,
+        "unit": unit,
+        "used": used,
+        "limit": cap,
+        "remaining": remaining,
+        "used_percent": used_pct,
+        "remaining_percent": rem_pct,
+        "reset_at": raw.get("next_reset_at"),
+        "status": raw.get("status"),
+        "exceeded": (
+            bool(exceeded)
+            if exceeded is not None
+            else (rem_pct is not None and rem_pct <= 0)
+        ),
+        "summary": raw.get("summary"),
+    }
+
+
+def _deepseek_limits(wallet: dict[str, Any]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for item in wallet.get("balance") or []:
+        if not isinstance(item, dict):
+            continue
+        currency = str(item.get("currency") or "USD").upper()
+        out.append(
+            {
+                "id": f"balance_{currency.lower()}",
+                "label": f"Balance ({currency})",
+                "unit": "currency",
+                "currency": currency,
+                "used": None,
+                "limit": None,
+                "remaining": _as_float(item.get("total_balance")),
+                "used_percent": None,
+                "remaining_percent": None,
+                "reset_at": None,
+                "status": None,
+                "exceeded": False,
+                "summary": None,
+            }
+        )
+    return out
+
+
+def _openrouter_limits(wallet: dict[str, Any]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    total_credits = _as_float(wallet.get("total_credits"))
+    total_usage = _as_float(wallet.get("total_usage"))
+    remaining = _as_float(wallet.get("remaining"))
+    if total_credits is not None or remaining is not None:
+        used_pct = None
+        if total_credits and total_usage is not None:
+            used_pct = round(total_usage / total_credits * 100.0, 2)
+        out.append(
+            {
+                "id": "credits",
+                "label": "Account credits",
+                "unit": "usd",
+                "used": total_usage,
+                "limit": total_credits,
+                "remaining": remaining,
+                "used_percent": used_pct,
+                "remaining_percent": (
+                    None if used_pct is None else round(max(0.0, 100.0 - used_pct), 2)
+                ),
+                "reset_at": None,
+                "status": None,
+                "exceeded": used_pct is not None and used_pct >= 100.0,
+                "summary": None,
+            }
+        )
+    key = wallet.get("key") if isinstance(wallet.get("key"), dict) else {}
+    key_limit = _as_float(key.get("limit"))
+    if key_limit is not None:
+        key_remaining = _as_float(key.get("limit_remaining"))
+        key_used = (
+            None
+            if key_remaining is None
+            else round(max(0.0, key_limit - key_remaining), 6)
+        )
+        out.append(
+            {
+                "id": "key_limit",
+                "label": "Key spend limit",
+                "unit": "usd",
+                "used": key_used,
+                "limit": key_limit,
+                "remaining": key_remaining,
+                "used_percent": (
+                    None
+                    if key_used is None or not key_limit
+                    else round(key_used / key_limit * 100.0, 2)
+                ),
+                "remaining_percent": (
+                    None
+                    if key_remaining is None or not key_limit
+                    else round(key_remaining / key_limit * 100.0, 2)
+                ),
+                "reset_at": None,
+                "status": None,
+                "exceeded": key_remaining is not None and key_remaining <= 0,
+                "summary": None,
+            }
+        )
+    return out
+
+
+def _provider_limits(provider: str, wallet: dict[str, Any]) -> list[dict[str, Any]]:
+    if provider == "deepseek":
+        return _deepseek_limits(wallet)
+    if provider == "openrouter":
+        return _openrouter_limits(wallet)
+    out: list[dict[str, Any]] = []
+    for field, limit_id, label, unit in _PROVIDER_LIMIT_WINDOWS.get(provider, ()):
+        entry = _limit_window_entry(limit_id, label, unit, wallet.get(field))
+        if entry is not None:
+            out.append(entry)
+    return out
+
+
+def build_limits_payload() -> dict[str, Any]:
+    """Build the agent-facing limits envelope from cached state (no network I/O)."""
+    enabled = get_enabled_providers()
+    visible = set(get_visible_providers())
+    builders = _wallet_builders()
+    with _lock:
+        state = _state if isinstance(_state, dict) else {}
+        wallets_raw = (
+            dict(state.get("wallets") or {})
+            if isinstance(state.get("wallets"), dict)
+            else {}
+        )
+        state_errors = list(state.get("errors") or [])
+        state_updated_at = state.get("updated_at")
+    with _quota_lock:
+        quota_accounts = dict((_quota_cache or {}).get("accounts") or {})
+
+    errors: list[str] = []
+    providers_out: dict[str, Any] = {}
+    for name in enabled:
+        wallet = wallets_raw.get(name)
+        if not isinstance(wallet, dict):
+            probe = quota_accounts.get(_wallet_probe_key(name))
+            builder = builders.get(name)
+            if probe is not None and builder is not None:
+                try:
+                    wallet = builder(probe)
+                except Exception as e:  # keep one bad provider from killing the feed
+                    wallet = None
+                    errors.append(f"{name}: {e}")
+        entry: dict[str, Any] = {
+            "id": name,
+            "label": _PROVIDER_LABELS.get(name, name),
+            "kind": None,
+            "configured": name in visible,
+            "status": "disabled" if name not in visible else "unavailable",
+            "ok": False,
+            "probed_at": None,
+            "remaining_summary": "",
+            "error": None,
+            "limits": [],
+        }
+        try:
+            if isinstance(wallet, dict):
+                entry["kind"] = wallet.get("kind")
+                entry["status"] = wallet.get("status") or (
+                    "active" if wallet.get("ok") else "error"
+                )
+                entry["ok"] = bool(wallet.get("ok"))
+                entry["probed_at"] = wallet.get("probed_at")
+                entry["remaining_summary"] = wallet.get("remaining_summary") or ""
+                entry["limits"] = _provider_limits(name, wallet)
+                if not entry["ok"]:
+                    message = str(wallet.get("error") or "provider reported an error")
+                    entry["error"] = message
+                    errors.append(f"{name}: {message}")
+            elif name in visible:
+                message = "no snapshot available yet"
+                entry["error"] = message
+                entry["status"] = "unavailable"
+                errors.append(f"{name}: {message}")
+        except Exception as e:
+            entry["status"] = "error"
+            entry["ok"] = False
+            entry["error"] = str(e)
+            errors.append(f"{name}: {e}")
+        providers_out[name] = entry
+
+    # Surface probe/collect failures recorded by the poller as well.
+    for message in state_errors:
+        text = str(message)
+        if text not in errors:
+            errors.append(text)
+
+    return {
+        "schema_version": LIMITS_SCHEMA_VERSION,
+        "updated_at": state_updated_at,
+        "generated_at": now_iso(),
+        "providers": providers_out,
+        "errors": errors,
+    }
+
+
+def _agent_token() -> str:
+    return os.environ.get(AGENT_TOKEN_ENV, "").strip()
+
+
+def _agent_token_from_request(request: Request) -> str | None:
+    auth = request.headers.get("authorization", "")
+    if auth[:7].lower() == "bearer ":
+        return auth[7:].strip()
+    for header in ("x-agent-token", "x-api-token"):
+        value = request.headers.get(header)
+        if value:
+            return value.strip()
+    return None
+
+
+def _agent_token_valid(request: Request) -> bool:
+    expected = _agent_token()
+    if not expected:
+        return True
+    provided = _agent_token_from_request(request)
+    return bool(provided) and secrets.compare_digest(provided, expected)
+
+
+def _limits_response() -> dict[str, Any]:
+    try:
+        return build_limits_payload()
+    except Exception as e:  # agents must always get an envelope, never a 500
+        return {
+            "schema_version": LIMITS_SCHEMA_VERSION,
+            "updated_at": None,
+            "generated_at": now_iso(),
+            "providers": {},
+            "errors": [f"limits: {e}"],
+        }
+
+
 @app.get("/api/health")
 def health() -> dict[str, Any]:
     with _lock:
@@ -3810,6 +4125,16 @@ def summary() -> dict[str, Any]:
     return data
 
 
+@app.get("/api/usage")
+def usage() -> dict[str, Any]:
+    """Legacy usage envelope, kept byte-for-byte compatible with /api/summary.
+
+    Agents should prefer /api/limits for machine-readable limits; this alias
+    exists so existing consumers of the old envelope keep working unchanged.
+    """
+    return summary()
+
+
 @app.get("/api/accounts")
 def accounts() -> dict[str, Any]:
     with _lock:
@@ -3852,6 +4177,23 @@ def pace() -> dict[str, Any]:
         key for key in (payload.get("no_window") or []) if str(key) in keep
     ]
     return payload
+
+
+@app.get("/api/limits")
+def limits(request: Request) -> dict[str, Any]:
+    """Machine-readable limits for agents.
+
+    Lists every enabled provider under its stable id. When AGENT_API_TOKEN is
+    set this route requires it (Bearer / X-Agent-Token / X-Api-Token); all other
+    routes stay public. Provider failures land in "errors", never a 500.
+    """
+    if not _agent_token_valid(request):
+        raise HTTPException(
+            status_code=401,
+            detail="missing or invalid agent API token",
+            headers={"WWW-Authenticate": 'Bearer realm="usage-board"'},
+        )
+    return _limits_response()
 
 
 @app.post("/api/refresh")
