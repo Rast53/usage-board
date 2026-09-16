@@ -60,6 +60,12 @@ USAGE_SUMMARY = {
 }
 
 
+# Deliberately low-entropy placeholders: a real session token is a secret and
+# only ever comes from the environment (never from source or fixtures).
+FAKE_SESSION_TOKEN = "user-123::unit-test-token"
+FAKE_COOKIE_HEADER = "WorkosCursorSessionToken=" + FAKE_SESSION_TOKEN + "; other=1"
+
+
 def _client() -> TestClient:
     return TestClient(app_module.app)
 
@@ -209,6 +215,50 @@ def test_probe_401_marks_token_expired(monkeypatch) -> None:
     assert wallet["ok"] is False
     assert wallet["status"] == "expired"
     assert "истёк" in wallet["error"]
+
+
+def test_cursor_token_alias(monkeypatch) -> None:
+    monkeypatch.delenv("CURSOR_SESSION_TOKEN", raising=False)
+    monkeypatch.setenv("CURSOR_TOKEN", FAKE_SESSION_TOKEN)
+    assert app_module.get_cursor_session_token() == FAKE_SESSION_TOKEN
+
+
+def test_cursor_auth_accepts_full_cookie_header() -> None:
+    headers = app_module._cursor_auth_headers(FAKE_COOKIE_HEADER, json_body=False)
+    assert headers["Cookie"] == FAKE_COOKIE_HEADER
+    # Bearer carries only the token half, never the whole cookie header.
+    assert headers["Authorization"] == "Bearer unit-test-token"
+    assert headers["Origin"] == "https://cursor.com"
+
+
+def test_probe_accepts_full_cookie_header(monkeypatch) -> None:
+    monkeypatch.setenv("CURSOR_SESSION_TOKEN", FAKE_COOKIE_HEADER)
+    with patch.object(
+        app_module,
+        "http_request",
+        return_value=(200, {}, json.dumps(DASHBOARD_USAGE).encode(), None),
+    ) as req:
+        probe = app_module.probe_cursor_usage()
+
+    assert probe["ok"] is True
+    sent = req.call_args.kwargs["headers"]
+    assert sent["Cookie"] == FAKE_COOKIE_HEADER
+    assert sent["Authorization"] == "Bearer unit-test-token"
+
+
+def test_probe_401_survives_second_endpoint_transport_error(monkeypatch) -> None:
+    """A 401 on the Connect RPC must not be masked by a REST fallback outage."""
+    monkeypatch.setenv("CURSOR_SESSION_TOKEN", FAKE_SESSION_TOKEN)
+    responses = [
+        (401, {}, b'{"error":"unauthorized"}', "401"),
+        (None, {}, b"", "connection refused"),
+    ]
+    with patch.object(app_module, "http_request", side_effect=responses):
+        probe = app_module.probe_cursor_usage()
+
+    assert probe["ok"] is False
+    assert probe["status"] == "expired"
+    assert "истёк" in probe["error"]
 
 
 # --- API: positive / negative ----------------------------------------------

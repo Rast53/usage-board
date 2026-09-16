@@ -3415,9 +3415,13 @@ def get_cursor_proxy() -> str | None:
 
 
 def get_cursor_session_token() -> str | None:
-    """Env CURSOR_SESSION_TOKEN: WorkosCursorSessionToken or bare access token."""
-    raw = os.environ.get("CURSOR_SESSION_TOKEN", "").strip()
-    return raw or None
+    """Env CURSOR_SESSION_TOKEN (alias CURSOR_TOKEN): WorkosCursorSessionToken
+    value or a bare access token."""
+    for name in ("CURSOR_SESSION_TOKEN", "CURSOR_TOKEN"):
+        raw = os.environ.get(name, "").strip()
+        if raw:
+            return raw
+    return None
 
 
 def get_cursor_base_url() -> str:
@@ -3441,19 +3445,35 @@ def _cursor_token_parts(token: str) -> tuple[str | None, str]:
     return None, raw
 
 
+def _cursor_cookie_parts(token: str) -> tuple[str, str]:
+    """Return ``(cookie_header, cookie_value)`` for a Cursor session token.
+
+    A full ``Cookie:`` header (what DevTools copies) is passed through
+    verbatim; otherwise the token is wrapped in ``WorkosCursorSessionToken=``.
+    The value drives the Bearer JWT lookup in ``_cursor_auth_headers``.
+    """
+    raw = str(token).strip()
+    marker = "WorkosCursorSessionToken="
+    if marker in raw:
+        value = raw.split(marker, 1)[1].split(";", 1)[0].strip()
+        return raw, value
+    return f"{marker}{raw}", raw
+
+
 def _cursor_auth_headers(token: str, *, json_body: bool) -> dict[str, str]:
     """Headers for the Connect RPC / dashboard REST calls.
 
-    The session token may be a bare access token (api2 Bearer) or the
-    ``WorkosCursorSessionToken`` cookie value (``accountId::jwt``). Send both
-    forms so either source works.
+    The session token may be a bare access token (api2 Bearer), the
+    ``WorkosCursorSessionToken`` cookie value (``accountId::jwt``) or a full
+    ``Cookie:`` header. Send both auth forms so either source works.
     """
-    _account, jwt = _cursor_token_parts(token)
+    cookie_header, cookie_value = _cursor_cookie_parts(token)
+    _account, jwt = _cursor_token_parts(cookie_value)
     headers: dict[str, str] = {
         "Accept": "application/json",
         "User-Agent": DASHBOARD_USER_AGENT,
         "Authorization": f"Bearer {jwt}",
-        "Cookie": f"WorkosCursorSessionToken={str(token).strip()}",
+        "Cookie": cookie_header,
     }
     if json_body:
         headers["Content-Type"] = "application/json"
@@ -3657,6 +3677,7 @@ def _cursor_fetch_usage(token: str, proxy: str | None) -> dict[str, Any]:
         ),
     ]
     last: dict[str, Any] = {"status": None, "data": None, "error": None, "endpoint": None}
+    auth_failure: dict[str, Any] | None = None
     for endpoint, url, method, body, headers in candidates:
         st, _hdrs, raw, err = http_request(
             url,
@@ -3672,11 +3693,16 @@ def _cursor_fetch_usage(token: str, proxy: str | None) -> dict[str, Any]:
         except Exception:
             data = text
         last = {"status": st, "data": data, "error": err, "endpoint": endpoint}
+        if st in (401, 403) and auth_failure is None:
+            auth_failure = last
         if st == 200 and isinstance(data, dict):
             parsed = parse_cursor_dashboard_usage(data)
             if _cursor_has_metrics(parsed):
                 return last
-    return last
+    # A definitive auth failure must survive a transport error on the other
+    # endpoint, otherwise the card loses its "token expired" state and shows a
+    # generic error instead.
+    return auth_failure or last
 
 
 def _cursor_has_metrics(parsed: dict[str, Any]) -> bool:

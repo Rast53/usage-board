@@ -99,9 +99,11 @@ docker compose pull && docker compose up -d
 
 - Provider keys live in `.env` on your server; the dashboard polls provider
   APIs read-only (balance/quota/usage endpoints).
-- Cursor has no API key: set `CURSOR_SESSION_TOKEN` to your browser session
-  token; its undocumented dashboard usage API is read-only. Refresh the token
-  when it expires (the card then shows «токен истёк»).
+- Cursor has no API key: set `CURSOR_SESSION_TOKEN` (alias `CURSOR_TOKEN`) to
+  your browser session token — the `WorkosCursorSessionToken` value, the bare
+  access token, or the whole `Cookie:` header. Its undocumented dashboard usage
+  API is read-only. Refresh the token when it expires (the card then shows
+  «токен истёк»).
 - Set `BASIC_AUTH_USER`/`BASIC_AUTH_PASSWORD` whenever the dashboard is
   reachable from the internet — otherwise anyone can see your spend.
 - UI is Russian-first (English UI is a possible contribution).
