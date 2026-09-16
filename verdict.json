@@ -1,0 +1,31 @@
+{
+  "verdict": "PASS",
+  "sha": "07db3a70bf865ec5127ecd1d0ed8787d24811e67",
+  "reasons": [
+    "AC1: pytest tests/test_limits_api.py is green when re-run by the verifier in a clean venv (9 passed, py3.12): the /api/limits envelope lists exactly the enabled providers under stable ids (KNOWN_PROVIDERS = 6) and a provider with an error lands in top-level errors with HTTP 200, never 500. Independently reproduced with a verifier-authored harness (patched cached state): zai error -> providers.zai.status='error' + errors entry, 200; PROVIDERS allowlist narrows the key set.",
+    "AC2: verified on a live instance launched from the PR-branch checkout (uvicorn app:app, the same entrypoint as the image CMD) on 127.0.0.1:3899: `curl -s http://127.0.0.1:3899/api/limits | jq '.providers | keys'` returned [commandcode, deepseek, kimi, opencode-go, openrouter, zai] — 6 stable ids, HTTP 200, no secrets in the body. Prod fornex remains a post-merge fact per spec. (The late 'Application startup complete' watch notification is stale — all three verification instances were already stopped; no listeners on 3897/3898/3899.)",
+    "AC3: negative holds — /api/usage did not exist on main (404 at e8b4cad); the PR adds it as a thin alias and /api/summary is untouched (app.py diff has 0 deletions, 3 purely additive hunks). Live byte-compare: /api/usage == /api/summary on head and its key set == main's /api/summary (only the volatile quota_probe_updated_at differs); no 'limits' key leaks. Test-double test_legacy_usage_route_and_format_unchanged green; the pre-existing tests/test_app.py tests still pass (head full suite 14 passed, main baseline 5 passed).",
+    "AC4: negative holds — with AGENT_API_TOKEN set, pytest token tests green and a live instance on 127.0.0.1:3897 returns 401 without/wrong token on /api/limits, 200 with valid Bearer / X-Agent-Token / X-Api-Token, while /api/health, /api/summary, /api/usage, /api/providers stay 200 without a token.",
+    "Scope/quality: diff is +697/-0 across 5 files (.env.example, README.md, app.py, docs/tasks/TASK-usage-board-agent-api/progress.md, tests/test_limits_api.py); no existing tests modified, no .github/Dockerfile/compose changes, no secrets in added lines; README agent-API section + AGENT_API_TOKEN in .env.example present (DoD docs item).",
+    "CI on head SHA 07db3a70: check-runs 'test', 'compose-check', 'build' all completed success (gh api repos/Rast53/usage-board/commits/<sha>/check-runs).",
+    "Deviation from the spec's illustrative Envelope (informational, no AC affected): providers.<id>.limits[] with ids session/weekly/monthly/mcp/credits/balance_<cur>/key_limit instead of resources{five_hour,weekly,monthly_credits,balance}; AC1/AC2 only require stable provider ids and `.providers | keys` ⊇6 — both met.",
+    "Head SHA unchanged (local checkout == remote branch == PR head, mergeable_state clean); verifier made no commits, branches, PR edits or deploys. Verdict built only from state.db of this session for usage."
+  ],
+  "model": "deepseek/deepseek-v4.1-flash",
+  "tokens_in": 41276,
+  "tokens_out": 30213,
+  "cache_read": 2328960,
+  "cost_usd": 0.031306,
+  "peak": false,
+  "usage_source": "state.db",
+  "usage": {
+    "model": "deepseek/deepseek-v4.1-flash",
+    "tokens_in": 41276,
+    "tokens_out": 30213,
+    "cache_read": 2328960,
+    "cost_usd": 0.031306,
+    "peak": false,
+    "usage_source": "state.db",
+    "usage_missing": false
+  }
+}
