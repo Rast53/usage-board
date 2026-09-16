@@ -1,0 +1,29 @@
+{
+  "verdict": "PASS",
+  "sha": "282842238e7c158fdb37262b06140a7764ecfc3d",
+  "reasons": [
+    "AC1: свой прогон на head 2828422 — SQL не нужен, pytest tests/test_cursor_provider.py: 19 passed (фикстура DashboardUsage парсится в total 10.19% / cursor models 13.21% / other models 3.16%, те же три метрики доезжают через probe → build_cursor_wallet в /api/usage). Полный сьют: 33 passed против 14 на main (9886037) — регрессий нет. CI на head SHA зелёный: build/test/compose-check/GitGuardian = success.",
+    "AC2: живая проверка (реальный CURSOR_SESSION_TOKEN + живой борд) по спеке — операторский пост-мерж шаг и явно не гейт мержа; в верификации не выполнялась (токена в профиле нет, живой инстанс крутит pre-merge код) → отмечена type=manual/result=skip. Кодовый путь подтверждён позитивным контролем: mocked-200 DashboardUsage через реальный collect_state(force_quota=True) даёт в /api/usage блок cursor с ненулевыми метриками (10.19/13.21/3.16) при заданном токене.",
+    "AC3: негативный проверен независимо от тестов PR: без CURSOR_SESSION_TOKEN get_cursor_session_token()=None, provider_has_api_key('cursor')=false, в /api/usage блока cursor нет; wallets-пейлоад head идентичен main байт-в-байт для остальных карточек (deepseek/kimi/opencode-go/zai, одинаковый seeded-стейт), notes/errors равны. Единственный структурный диф снимков — enabled_providers получает 'cursor' (задокументированное добавление провайдера, README).",
+    "AC4: негативный проверен независимо: mock 401 на оба cursor-эндпоинта → wallet.status=expired, error «CURSOR_SESSION_TOKEN истёк — обновите токен (HTTP 401)»; /api/usage=200 и /api/limits=200, чужие кошельки не тронуты, борд не падает. 401 не маскируется транспорной ошибкой фолбэк-эндпоинта; UI-путь (renderProviderCard показывает w.error при !ok, classify → critical) — инспекция static/index.html.",
+    "Scope/diff: против merge-base main 9886037 — 6 файлов, +1089/−4 (app.py, static/index.html, tests/test_cursor_provider.py, README.md, .env.example, docs/tasks/TASK-usage-board-cursor-card/progress.md). Существующие тесты не модифицированы (только новый файл тестов), запрещённые пути (.github/workflows, Dockerfile, compose, миграции) не затронуты, новых публичных HTTP-роутов нет, секретов в диффе нет (только fake-токены фикстур, GitGuardian success).",
+    "Head SHA стабилен: 282842238e7c158fdb37262b06140a7764ecfc3d (PR #3 OPEN, base main, не draft, MERGEABLE/CLEAN). В ветку/code не писал, коммитов не делал — sidecar-коммит за диспетчером."
+  ],
+  "model": "deepseek/deepseek-v4.1-flash",
+  "tokens_in": 64596,
+  "tokens_out": 29680,
+  "cache_read": 2889984,
+  "cost_usd": 0.036167,
+  "peak": false,
+  "usage_source": "state.db",
+  "usage": {
+    "model": "deepseek/deepseek-v4.1-flash",
+    "tokens_in": 64596,
+    "tokens_out": 29680,
+    "cache_read": 2889984,
+    "cost_usd": 0.036167,
+    "peak": false,
+    "usage_source": "state.db",
+    "usage_missing": false
+  }
+}
