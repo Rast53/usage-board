@@ -8,6 +8,9 @@
 services:
   app:
     image: ghcr.io/rast53/usage-board:latest
+    # Always repull on `up`: a plain `docker compose up -d` is then enough to
+    # move a host (fornex-usa) to the image of the newest main merge.
+    pull_policy: always
     restart: unless-stopped
     environment:
       DOMAIN: ${DOMAIN:-}
