@@ -1,0 +1,13 @@
+[Unit]
+Description=Periodically autodeploy usage-board (repull latest image)
+Documentation=https://github.com/Rast53/usage-board
+
+[Timer]
+# First check shortly after boot, then every 5 minutes.
+OnBootSec=2min
+OnUnitActiveSec=5min
+Persistent=true
+Unit=usage-board-autodeploy.service
+
+[Install]
+WantedBy=timers.target
