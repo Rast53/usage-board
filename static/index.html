@@ -121,6 +121,7 @@
   .pcard.prov-opencode-go { background: linear-gradient(165deg, rgba(34,211,238,0.24) 0%, var(--card) 46%); }
   .pcard.prov-deepseek { background: linear-gradient(165deg, rgba(59,130,246,0.28) 0%, var(--card) 46%); }
   .pcard.prov-openrouter { background: linear-gradient(165deg, rgba(16,185,129,0.26) 0%, var(--card) 46%); }
+  .pcard.prov-cursor { background: linear-gradient(165deg, rgba(148,163,184,0.30) 0%, var(--card) 46%); }
   .pcard.critical { border-color: rgba(248,81,73,0.45); }
   .pcard.warn { border-color: rgba(210,153,34,0.45); }
   .pcard.ok { border-color: var(--border); }
@@ -402,6 +403,17 @@ function classify(item) {
     });
     return worst;
   }
+  if (item.provider === 'cursor' || item.kind === 'cursor-usage') {
+    if (item.status === 'expired') return 'critical';
+    if (!item.ok) return 'critical';
+    const vals = [item.total, item.cursor_models, item.other_models].map(function(w){ return w && w.remaining_percent; }).filter(function(v){ return v != null; });
+    let worst = 'ok';
+    vals.forEach(function(rem) {
+      if (rem <= 0) worst = 'critical';
+      else if (rem <= 40 && worst !== 'critical') worst = 'warn';
+    });
+    return worst;
+  }
   return 'ok';
 }
 
@@ -580,6 +592,15 @@ function heroFor(w) {
       value: rem != null ? ('$' + money(rem)) : (month.remaining_percent != null ? (Math.round(month.remaining_percent) + '%') : '—'),
       caption: cap != null ? ('из $' + money(cap) + ' / мес') : 'месячный лимит',
       plan: w.plan_label || 'Go',
+    };
+  }
+  if (p === 'cursor') {
+    const total = w.total || {};
+    const used = total.used_percent;
+    return {
+      value: used != null ? (Math.round(Number(used)) + '%') : '—',
+      caption: 'плана использовано',
+      plan: w.plan_label || 'Cursor',
     };
   }
   return { value: '—', caption: '', plan: '' };
@@ -843,6 +864,38 @@ function renderOpencodeGoCard(w) {
     },
   });
 }
+function renderCursorCard(w) {
+  return renderProviderCard(w, {
+    id: 'cursor-card', prov: 'cursor', title: 'Cursor · план',
+    windows: [
+      { key: 'total', label: 'всего', window: 'план' },
+      { key: 'cursor_models', label: 'Cursor', window: 'модели' },
+      { key: 'other_models', label: 'другие', window: 'модели' },
+    ],
+    details: function(card) {
+      function row(label, win) {
+        if (!win) return '<div class="details-row"><span>' + escapeHtml(label) + '</span><span class="muted">нет данных</span></div>';
+        const used = win.used_percent != null ? (Number(win.used_percent).toFixed(1) + '%') : '—';
+        const rem = win.remaining_percent != null ? (Number(win.remaining_percent).toFixed(1) + '%') : '—';
+        const reset = win.next_reset_at ? (fmtDateShort(win.next_reset_at) + ' · ' + fmtRelative(win.next_reset_at)) : '—';
+        return '<div class="details-row"><span>' + escapeHtml(label) + '</span><span><b>' + escapeHtml(used) + '</b> · ост. ' + escapeHtml(rem) + '</span></div>' +
+          '<div class="details-row"><span class="muted">сброс</span><span class="muted">' + escapeHtml(reset) + '</span></div>';
+      }
+      const cycle = card.billing_cycle_start
+        ? (fmtDateShort(card.billing_cycle_start) + ' – ' + (card.billing_cycle_end ? fmtDateShort(card.billing_cycle_end) : '—'))
+        : '';
+      return '<div class="details-section">План</div>' +
+        '<div class="details-row"><span>label</span><span>' + escapeHtml(String(card.plan_label || 'Cursor')) + '</span></div>' +
+        (cycle ? '<div class="details-row"><span>цикл</span><span class="muted">' + escapeHtml(cycle) + '</span></div>' : '') +
+        '<div class="details-section">Использование</div>' +
+        row('всего', card.total) +
+        row('Cursor-модели', card.cursor_models) +
+        row('другие модели', card.other_models) +
+        '<div class="details-src">источник: Cursor dashboard usage API (session token)</div>' +
+        (card.error ? '<div class="details-src bad-text">' + escapeHtml(card.error) + '</div>' : '');
+    },
+  });
+}
 function renderDeepseekCard(w) {
   return renderProviderCard(w, {
     id: 'deepseek-card', prov: 'deepseek', title: 'DeepSeek · баланс',
@@ -907,11 +960,12 @@ const WALLET_LABELS = {
   commandcode: 'Command Code',
   kimi: 'Kimi',
   'opencode-go': 'OpenCode Go',
+  cursor: 'Cursor',
   deepseek: 'DeepSeek',
   openrouter: 'OpenRouter',
 };
-const STAT_LABEL_ORDER = ['deepseek', 'openrouter', 'zai', 'commandcode', 'kimi', 'opencode-go'];
-const CARD_ORDER = ['zai', 'commandcode', 'kimi', 'opencode-go', 'deepseek', 'openrouter'];
+const STAT_LABEL_ORDER = ['deepseek', 'openrouter', 'zai', 'commandcode', 'kimi', 'opencode-go', 'cursor'];
+const CARD_ORDER = ['zai', 'commandcode', 'kimi', 'opencode-go', 'cursor', 'deepseek', 'openrouter'];
 
 function applySiteTitle(title) {
   const t = (title && String(title).trim()) ? String(title).trim() : 'Мои подписки';
@@ -1257,6 +1311,7 @@ async function load() {
       commandcode: renderCommandcodeCard,
       kimi: renderKimiCard,
       'opencode-go': renderOpencodeGoCard,
+      cursor: renderCursorCard,
       deepseek: renderDeepseekCard,
       openrouter: renderOpenrouterCard,
     };
