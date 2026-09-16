@@ -1,0 +1,53 @@
+{
+  "schema": "evidence.v1",
+  "sha": "8dd784ceffd15c5c467b740e623883cd36c2508e",
+  "items": [
+    {
+      "id": "1",
+      "type": "manual",
+      "result": "skip",
+      "checked_with": "ssh -o BatchMode=yes fornex-usa (read-only): docker inspect usage-board-app-1, systemctl list-timers/status, git -C /opt/usage-board rev-parse, docker compose config по копии PR-файла в /tmp; стенд /tmp/ub4-harness (стаб docker) + bash deploy/autodeploy.sh в клоне ub4-ver",
+      "proof": "Механизм: pull_policy: always у app + явный 'docker compose pull app', 'up -d --no-deps app', ожидание health, печать label по шаблону {{index .Config.Labels \"org.opencontainers.image.revision\"}}, EXPECT_REVISION-гейт. T1 EXPECT_REVISION=abc123revision -> rc=0 'revision=abc123revision'; T2 EXPECT_REVISION=deadbeef -> rc=1 'ERROR: revision abc123revision != EXPECT_REVISION deadbeef'. Живое состояние (2026-09-16 ~23:10 UTC): label=3326a700925c3ddd34311b33bcf60d1f3a6bddf9 = tip origin/main, контейнер пересоздан 21:42:49Z (образ собран 21:39:55Z, мерж в main 21:39:35Z). Юнит usage-board-autodeploy.timer на хосте отсутствует, чекаут /opt/usage-board на 27718d3 без deploy/ — после мержа факт наблюдаем после однократной установки из deploy/README.md; тогда же повторить проверку.",
+      "paths": [
+        "deploy/autodeploy.sh",
+        "deploy/usage-board-autodeploy.service",
+        "deploy/usage-board-autodeploy.timer"
+      ]
+    },
+    {
+      "id": "2",
+      "type": "test",
+      "result": "pass",
+      "checked_with": "docker compose -f compose.app-only.yml config (локально v5.5.1; read-only рендер на fornex-usa v5.3.1); deploy/check-pull-policy.sh; негативная мутация; pytest tests/ на head и с --ignore=tests/test_deploy_config.py",
+      "proof": "Отрендеренный config содержит 'pull_policy: always' (локально строка 42; на fornex-usa app.pull_policy=always). check-pull-policy.sh -> 'OK: compose.app-only.yml services.app.pull_policy=always' rc=0. Мутация (удалить строку): скрипт rc=1 'FAIL ... <unset> (want always)', падают 2 теста. pytest tests/ head -> 43 passed; --ignore нового файла -> 33 passed (база), новый файл -> 10 passed. Раннером CI job test (pip fastapi/uvicorn/httpx/pytest/PySocks, pytest -q) прогоняется тот же набор — гейт живой.",
+      "paths": []
+    },
+    {
+      "id": "2",
+      "type": "ci",
+      "result": "pass",
+      "checked_with": "gh api repos/Rast53/usage-board/commits/8dd784ceffd15c5c467b740e623883cd36c2508e/check-runs; gh run view 35160023188 --job 105008387394 --log",
+      "proof": "На head SHA: test completed/success, compose-check completed/success, build completed/success, GitGuardian Security Checks completed/success. В логе job test: '43 passed, 4 warnings in 0.96s' — новый deploy-гейт исполняется в CI (в job compose-check греб-шага по pull_policy нет, он в job test).",
+      "paths": []
+    },
+    {
+      "id": "3",
+      "type": "diff",
+      "result": "pass",
+      "checked_with": "git diff -U0 origin/main...HEAD + --name-status (merge-base 3326a70 = tip origin/main) + gh api repos/Rast53/usage-board/pulls/4/files",
+      "proof": "Ровно 10 файлов: M README.md, M compose.app-only.yml (+3: 2 комментария + 'pull_policy: always'), M docker-compose.yml (+1: 'pull_policy: always'), A deploy/README.md, A deploy/autodeploy.sh, A deploy/check-pull-policy.sh, A deploy/usage-board-autodeploy.service, A deploy/usage-board-autodeploy.timer, A docs/tasks/TASK-usage-board-autodeploy-repull/progress.md, A tests/test_deploy_config.py. Оба compose-хунка — вставки внутри services.app сразу после строки image; вне секции app правок compose-файлов нет. .env/.env.example/секретных файлов в диффе нет (name-status по ним пуст); скрипты имеют mode 100755.",
+      "paths": [
+        "compose.app-only.yml",
+        "docker-compose.yml"
+      ]
+    },
+    {
+      "id": "3",
+      "type": "test",
+      "result": "pass",
+      "checked_with": "сравнение env-ключей app-блока main vs head; прогон tests/test_deploy_config.py; скан added-строк по секретам",
+      "proof": "Набор env-ключей services.app.compose.app-only.yml идентичен main (diff пуст). test_app_only_env_contract_unchanged и test_autodeploy_does_not_touch_env_or_secrets зелёные (все 10 тестов файла passed). Скан '^+' строк на ghp_/sk-/AKIA/BEGIN (RSA|OPENSSH|PRIVATE)/password= — пусто; в текстах упоминания .env только как описание «не трогаем».",
+      "paths": []
+    }
+  ]
+}
