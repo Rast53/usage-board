@@ -47,6 +47,18 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run tests
+        run: |
+          pip install fastapi "uvicorn[standard]" httpx pytest PySocks
+          pytest -q
+
   compose-check:
     runs-on: ubuntu-latest
     steps:
@@ -56,5 +68,6 @@ jobs:
           cp .env.example .env
           sed -i 's/^DOMAIN=.*/DOMAIN=test.example.com/' .env
           docker compose -f docker-compose.yml config >/dev/null
+          docker compose --profile tls -f docker-compose.yml config >/dev/null
           docker compose -f docker-compose.yml -f docker-compose.app-only.yml config >/dev/null
           echo "compose config OK"
