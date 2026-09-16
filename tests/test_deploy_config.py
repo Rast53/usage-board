@@ -11,16 +11,20 @@ pytest/PySocks), so a tiny indentation reader stands in for a YAML parser.
 from __future__ import annotations
 
 import re
+import shutil
 import stat
+import subprocess
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 
 APP_ONLY = ROOT / "compose.app-only.yml"
 MAIN_COMPOSE = ROOT / "docker-compose.yml"
 AUTODEPLOY = ROOT / "deploy" / "autodeploy.sh"
+CHECK_PULL_POLICY = ROOT / "deploy" / "check-pull-policy.sh"
 SYSTEMD_DIR = ROOT / "deploy"
-WORKFLOW = ROOT / ".github" / "workflows" / "build.yml"
 
 # The `environment:` keys of the app-only app service. Kept here as a contract so
 # the autodeploy change can never silently add/drop/rename an env var (and thus
@@ -151,11 +155,26 @@ def test_systemd_timer_periodically_triggers_the_service():
 
 
 # --- CI gate -----------------------------------------------------------------
+# NOTE: the PAT used to push this branch has no `workflow` scope, so
+# .github/workflows/build.yml cannot be changed from here. The gate therefore
+# rides the existing `test` CI job (`pytest -q`) and this standalone script.
 
 
-def test_ci_gate_asserts_app_pull_policy():
-    workflow = WORKFLOW.read_text()
-    assert "services.app.pull_policy" in workflow
-    assert "config --format json" in workflow
-    assert "compose.app-only.yml" in workflow
-    assert "docker-compose.yml" in workflow
+def test_check_pull_policy_script_present_and_executable():
+    assert CHECK_PULL_POLICY.is_file()
+    assert CHECK_PULL_POLICY.stat().st_mode & stat.S_IXUSR
+
+
+def test_check_pull_policy_script_enforces_app_repull():
+    """Real `docker compose config` gate; skipped where docker is unavailable."""
+    if shutil.which("docker") is None:
+        pytest.skip("docker not available")
+    proc = subprocess.run(
+        [str(CHECK_PULL_POLICY)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "services.app.pull_policy=always" in proc.stdout
