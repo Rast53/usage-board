@@ -1,0 +1,56 @@
+{
+  "schema": "evidence.v1",
+  "sha": "282842238e7c158fdb37262b06140a7764ecfc3d",
+  "items": [
+    {
+      "id": "1",
+      "type": "test",
+      "result": "pass",
+      "checked_with": "cd /opt/hermes/verify-workspace/wt-ubc (git checkout 282842238e7c158fdb37262b06140a7764ecfc3d) && /opt/hermes/verify-workspace/uba-venv/bin/python -m pytest tests/test_cursor_provider.py -v && ... -m pytest -q (свой прогон, не отчёт агента; venv с fastapi/uvicorn/httpx/pytest/PySocks — набор из CI workflow)",
+      "proof": "tests/test_cursor_provider.py: 19 passed (test_parse_dashboard_usage_metrics: 10.19/13.21/3.16; test_probe_ok_maps_three_metrics: wallet total/cursor_models/other_models те же; REST-форма usage-summary и wrapped-envelope тоже). Полный сьют 33 passed, 4 warnings in 0.67s; на main-клоне (9886037) тот же venv: 14 passed → 19 новых тестов, ничего не сломано."
+    },
+    {
+      "id": "1",
+      "type": "ci",
+      "result": "pass",
+      "checked_with": "gh api repos/Rast53/usage-board/commits/282842238e7c158fdb37262b06140a7764ecfc3d/check-runs + gh api 'repos/Rast53/usage-board/actions/runs?head_sha=282842238e7c158fdb37262b06140a7764ecfc3d'",
+      "proof": "check-runs на head SHA: build=completed/success, test=completed/success, compose-check=completed/success, GitGuardian Security Checks=completed/success (красных нет). workflow run 'build' для head_sha=282842...: conclusion=success."
+    },
+    {
+      "id": "1",
+      "type": "diff",
+      "result": "pass",
+      "checked_with": "git diff --name-status origin/main...HEAD + gh pr view 3 --json files (в клоне wt-ubc, свежий fetch origin main, merge-base = типу main 988603772f4be54efd97b44734de645396a39c6f)",
+      "proof": "PR меняет ровно 6 файлов (+1089/−4): app.py (регистрация cursor-провайдера: probe/wallet/parse + KNOWN_PROVIDERS/_PROVIDER_*), static/index.html (renderCursorCard, classify, heroFor, порядок карточек), tests/test_cursor_provider.py (новый, 19 тестов), README.md (строка Cursor в таблице провайдеров + CURSOR_SESSION_TOKEN), .env.example (CURSOR_SESSION_TOKEN/CURSOR_PROXY/CURSOR_BASE_URL), docs/tasks/TASK-usage-board-cursor-card/progress.md (новый). Существующие тесты не трогались, .github/workflows/Dockerfile/compose/миграции не затронуты.",
+      "paths": [
+        ".env.example",
+        "README.md",
+        "app.py",
+        "docs/tasks/TASK-usage-board-cursor-card/progress.md",
+        "static/index.html",
+        "tests/test_cursor_provider.py"
+      ]
+    },
+    {
+      "id": "2",
+      "type": "manual",
+      "result": "skip",
+      "checked_with": "спека tasks/TASK-usage-board-cursor-card/spec.md (Acceptance 2 + «Проверяемость на verify»: живой пост-мерж шаг, не гейт мержа); позитивный контроль — /opt/hermes/verify-workspace/ubc-ev/ac4_401_board.py (сценарий B)",
+      "proof": "Живая проверка «карточка Cursor видна на живом борде с валидным CURSOR_SESSION_TOKEN, curl /api/usage содержит блок cursor» не выполнялась: токен добывает оператор из Cursor-приложения после мержа (post-merge шаг, в verify-профиле токена нет), живой инстанс fornex-usa крутит pre-merge код. Позитивный контроль кодового пути: при заданном токене mocked-200 DashboardUsage через реальный collect_state → /api/usage: wallet_keys=[cursor,deepseek], cursor.total.used_percent=10.19, cursor_models=13.21, other_models=3.16. Живой curl остаётся за оператором — отмечено как skip, не pass."
+    },
+    {
+      "id": "3",
+      "type": "test",
+      "result": "pass",
+      "checked_with": "свой харнесс /opt/hermes/verify-workspace/ubc-ev/ac3_snapshot_compare.py (два модуля app.py: head 2828422 и main 9886037 в одном процессе, TestClient, одинаковый seeded-стейт: 4 чужих кошелька + stale cursor-кошелёк на head, CURSOR_SESSION_TOKEN не задан) + pytest tests/test_cursor_provider.py::test_cursor_hidden_without_token::test_cursor_absent_without_token_other_wallets_unchanged",
+      "proof": "Без токена: cursor не visible (get_visible_providers=[deepseek,zai,kimi,opencode-go]), в /api/usage нет блока cursor, providers.wallets.keys одинаковы, wallets-пейлоад head == main байт-в-байт (deepseek/kimi/opencode-go/zai не изменились), notes/errors равны. Полный структурный диф снимков main→head: единственный отличающийся ключ — enabled_providers (+'cursor', задокументировано в README как стабильный id провайдера). Результат в ubc-ev/ac3_snapshot_compare.json."
+    },
+    {
+      "id": "4",
+      "type": "test",
+      "result": "pass",
+      "checked_with": "свой харнесс /opt/hermes/verify-workspace/ubc-ev/ac4_401_board.py (mock http_request: 401 на api2.cursor.sh и cursor.com/api/usage-summary, 200 на deepseek; CURSOR_SESSION_TOKEN задан) + pytest tests/test_cursor_provider.py::{test_probe_401_marks_token_expired,test_probe_401_survives_second_endpoint_transport_error,test_cursor_401_does_not_break_board}",
+      "proof": "401 от Cursor: cursor wallet status=expired, error=«CURSOR_SESSION_TOKEN истёк — обновите токен (HTTP 401)»; /api/usage=200 (wallet_keys=[cursor,deepseek], deepseek-кошелёк не тронут), /api/limits=200 (cursor.status=expired, тот же текст в errors) — борд не падает. 401 сохраняется и при транспортной ошибке второго эндпоинта. UI: renderProviderCard рендерит w.error при !ok, classify() → 'critical' (инспекция static/index.html). Результат в ubc-ev/ac4_401_board.json."
+    }
+  ]
+}
