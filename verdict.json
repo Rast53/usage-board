@@ -1,0 +1,27 @@
+{
+  "verdict": "PASS",
+  "sha": "8dd784ceffd15c5c467b740e623883cd36c2508e",
+  "reasons": [
+    "AC1 (живой факт «после ближайшего мержа без ручных действий»): механизм доставлен и проверен, само живое наблюдение отложено (критерий по своей формулировке — «живой факт, проверяемый в течение дня»; ветка по правилам задачи не деплоит). Собственный стенд со стаб-docker на deploy/autodeploy.sh: T1 (EXPECT_REVISION совпадает) — rc=0, вызовы по порядку 'compose -f compose.app-only.yml pull app' -> 'compose -f compose.app-only.yml up -d --no-deps app' -> 'compose ... ps -q app' -> docker inspect по ревижн-шаблону, в логе 'revision=abc123revision'; T2 (EXPECT_REVISION не совпадает) — rc=1, 'ERROR: revision abc123revision != EXPECT_REVISION deadbeef'. Живой read-only факт на fornex-usa (ssh, ~23:10 UTC 2026-09-16): label контейнера = 3326a700925c3ddd34311b33bcf60d1f3a6bddf9 = текущий tip origin/main (мерж 2026-09-17T00:39:35+03:00; контейнер пересоздан 21:42:49Z из образа, собранного 21:39:55Z, т.е. ~3 мин после мержа), host compose v5.3.1 рендерит PR-файл compose.app-only.yml с app.pull_policy=always. Ещё не сделанный ops-шаг для живого AC1: на хосте НЕТ юнита usage-board-autodeploy.timer и чекаут /opt/usage-board стоит на 27718d3 (без deploy/ и без pull_policy) — нужна однократная установка из deploy/README.md (+ обновление чекаута); наблюдение повторить после мержа. По правилу манифеста manual/skip-пункт не блокирует и AC покрыт.",
+    "AC2 подтверждён дважды. (а) docker compose -f compose.app-only.yml config -> 'pull_policy: always' у services.app (локально compose v5.5.1; тот же PR-файл на fornex-usa, compose v5.3.1, даёт app.pull_policy=always). (б) гейт в PR: tests/test_deploy_config.py (10 тестов; test_check_pull_policy_script_enforces_app_repull реально запускает deploy/check-pull-policy.sh -> 'OK: compose.app-only.yml services.app.pull_policy=always', rc=0) + standalone deploy/check-pull-policy.sh. Мои прогоны: pytest tests/ на head -> 43 passed (33 без нового файла = база + 10 новых — совпадает с заявленным; база подтверждена отдельным прогоном с --ignore). CI на head SHA 8dd784ce зелёный: test, compose-check, build, GitGuardian — все completed/success; в логе job test (run 35160023188, job 105008387394) — '43 passed, 4 warnings in 0.96s', т.е. гейт исполняется в CI. Негативный контроль (мутация в моём клоне, затем восстановлено): без строки pull_policy скрипт rc=1 ('FAIL: compose.app-only.yml services.app.pull_policy=<unset> (want always)'), падают test_app_only_compose_repulls_image и test_check_pull_policy_script_enforces_app_repull — гейт не вакуумный. Отклонение от буквы пакета: отдельного grep-шага в .github/workflows/build.yml нет (у токена ветки нет workflow-scope, задокументировано в PR) — гейт едет на существующем job test; существо критерия (config содержит pull_policy для app + гейт в PR) выполнено.",
+    "AC3 (негативный) подтверждён: дифф origin/main...HEAD — ровно 10 файлов, ни .env, ни .env.example, ни кредов (git diff --name-status и gh api pulls/4/files совпадают). Единственные правки compose-файлов — вставка строки 'pull_policy: always' (+2 строки комментария в app-only) внутри services.app: U0-хунки @@ -10,0 +11,3 @@ services: и @@ -11,0 +12 @@ services:. Набор env-ключей app-блока compose.app-only.yml идентичен main (сравнил сам — diff пуст). autodeploy.sh и systemd-юнит не читают и не пишут .env (нет redirect в .env, 'cat .env', EnvironmentFile); тесты test_app_only_env_contract_unchanged и test_autodeploy_does_not_touch_env_or_secrets зелёные. Скан добавленных строк на ghp_/sk-/AKIA/BEGIN PRIVATE — пусто.",
+    "Гигиена: head SHA 8dd784ceffd15c5c467b740e623883cd36c2508e не сдвинулся (gh pr view + git ls-remote), PR open/MERGEABLE/не draft/base main (6 коммитов); дифф 502+/0-, в бюджете; существующих тестов не правит (только новый файл), запрещённых путей (.github/workflows, app-код, static/, Dockerfile, миграции) нет. Код я не менял, не коммитил, PR не открывал, деплой не запускал; на fornex-usa — только read-only команды (копия PR-файла compose в /tmp хоста для рендера конфига). Не-блокирующее замечание операторy: отрендерить docker-compose.yml локально нельзя без host .env (env_file: .env) — его pull_policy подтверждён диффом + тестом + успешным CI compose-check (там .env делается из .env.example)."
+  ],
+  "model": "deepseek/deepseek-v4.1-flash",
+  "tokens_in": 52820,
+  "tokens_out": 49174,
+  "cache_read": 1878784,
+  "cost_usd": 0.043064,
+  "peak": false,
+  "usage_source": "state.db",
+  "usage": {
+    "model": "deepseek/deepseek-v4.1-flash",
+    "tokens_in": 52820,
+    "tokens_out": 49174,
+    "cache_read": 1878784,
+    "cost_usd": 0.043064,
+    "peak": false,
+    "usage_source": "state.db",
+    "usage_missing": false
+  }
+}
