@@ -9,6 +9,15 @@ image changed, waits for health, and prints the running
 `pull_policy: always` on the `app` service means an ordinary
 `docker compose up -d` repulls too — the timer just makes that automatic.
 
+The repull contract is enforced in CI by the existing `test` job (`pytest -q` →
+`tests/test_deploy_config.py`) and can be checked locally with the standalone
+gate (it renders `docker compose config`):
+
+```bash
+deploy/check-pull-policy.sh                    # compose.app-only.yml
+deploy/check-pull-policy.sh docker-compose.yml # needs a host .env
+```
+
 ## Install (once, on the host)
 
 The stack lives in a checkout, e.g. `/opt/usage-board`, with its secrets in

@@ -122,6 +122,9 @@ See [`deploy/README.md`](deploy/README.md) for the one-shot run and the
 `EXPECT_REVISION` hard gate. The script never reads or writes `.env`; secrets
 stay in the host file exactly as for a manual `docker compose up -d`.
 
+The repull contract is checked by `deploy/check-pull-policy.sh` and by
+`tests/test_deploy_config.py`, which the CI `test` job runs.
+
 ## Security notes
 
 - Provider keys live in `.env` on your server; the dashboard polls provider
