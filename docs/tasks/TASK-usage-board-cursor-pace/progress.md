@@ -7,7 +7,7 @@ usage-board: Cursor in «Темп квот» — two monthly bars (Cursor-мод
 `monthly` lanes; the pace panel renders two distinguishable dots in the
 «месяц» column. Tests, docs and a desktop screenshot; no deploy.
 
-PR: (opened from `dsh/TASK-usage-board-cursor-pace`).
+PR: https://github.com/Rast53/usage-board/pull/8
 
 ## Done (this branch)
 
