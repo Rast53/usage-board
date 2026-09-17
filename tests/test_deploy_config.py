@@ -10,6 +10,8 @@ pytest/PySocks), so a tiny indentation reader stands in for a YAML parser.
 
 from __future__ import annotations
 
+import json
+import os
 import re
 import shutil
 import stat
@@ -21,6 +23,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 APP_ONLY = ROOT / "compose.app-only.yml"
+APP_ONLY_OVERLAY = ROOT / "docker-compose.app-only.yml"
 MAIN_COMPOSE = ROOT / "docker-compose.yml"
 AUTODEPLOY = ROOT / "deploy" / "autodeploy.sh"
 CHECK_PULL_POLICY = ROOT / "deploy" / "check-pull-policy.sh"
@@ -110,6 +113,77 @@ def test_default_compose_repulls_image():
 def test_app_only_env_contract_unchanged():
     """Negative gate: the autodeploy change must not alter app env/creds."""
     assert _env_keys(_service_block(APP_ONLY.read_text(), "app")) == APP_ONLY_ENV_KEYS
+
+
+# --- published port contract (loopback only) ---------------------------------
+# TASK-usage-board-close-plain-port: the app-only stack must never publish the
+# bare app port on 0.0.0.0. The host reverse proxy is the only way in, so the
+# bind IP is pinned to 127.0.0.1 while APP_PORT stays configurable.
+
+LOOPBACK_PUBLISH = '"127.0.0.1:${APP_PORT:-8080}:3210"'
+
+
+def _published_lines(text: str) -> list[str]:
+    """Port-publish entries that interpolate APP_PORT and target 3210."""
+    return [
+        line.strip()
+        for line in text.splitlines()
+        if line.strip().startswith("-")
+        and "3210" in line
+        and "APP_PORT" in line
+    ]
+
+
+def test_app_only_compose_publishes_loopback_only():
+    block = _service_block(APP_ONLY.read_text(), "app")
+    assert LOOPBACK_PUBLISH in block
+
+
+def test_app_only_overlay_publishes_loopback_only():
+    block = _service_block(APP_ONLY_OVERLAY.read_text(), "app")
+    assert LOOPBACK_PUBLISH in block
+
+
+def test_no_compose_publishes_app_port_on_all_interfaces():
+    """Negative gate: no bare `APP_PORT:3210` publish (implicit 0.0.0.0)."""
+    for path in (APP_ONLY, APP_ONLY_OVERLAY):
+        publish_lines = _published_lines(path.read_text())
+        assert publish_lines, f"{path}: no APP_PORT publish line found"
+        for line in publish_lines:
+            assert "127.0.0.1:" in line, f"{path}: non-loopback publish {line!r}"
+
+
+def test_default_compose_does_not_publish_app_port():
+    """The Caddy/TLS stack keeps the app internal (expose only, no ports)."""
+    block = _service_block(MAIN_COMPOSE.read_text(), "app")
+    assert "ports:" not in block
+    assert "3210" in block  # still reachable from the compose network via expose:
+
+
+def test_rendered_app_only_port_is_loopback():
+    """Acceptance #1: rendered compose yields 127.0.0.1:8090 -> 3210."""
+    if shutil.which("docker") is None:
+        pytest.skip("docker not available")
+    env = {**os.environ, "APP_PORT": "8090"}
+    proc = subprocess.run(
+        ["docker", "compose", "-f", "compose.app-only.yml", "config", "--format", "json"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        env=env,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    ports = json.loads(proc.stdout)["services"]["app"]["ports"]
+    assert ports == [
+        {
+            "mode": "ingress",
+            "host_ip": "127.0.0.1",
+            "target": 3210,
+            "published": "8090",
+            "protocol": "tcp",
+        }
+    ], ports
 
 
 # --- host autodeploy rail ----------------------------------------------------
