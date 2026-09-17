@@ -1,0 +1,58 @@
+{
+  "schema": "evidence.v1",
+  "sha": "621139794302e014f42f3eb6720639ae17484db6",
+  "items": [
+    {
+      "id": "1",
+      "type": "test",
+      "result": "pass",
+      "checked_with": "pytest tests/test_pace_api.py -v with uba-venv python3.12 at head 6211397; independent fixture run (check_ac12.py) importing head app.py build_pace_payload",
+      "proof": "cursor-main present in accounts, exactly 2 lanes, both window==monthly, used_percent 86.7 label «Cursor-модели» and 74.18 label «другие модели», reset_at 2026-09-25T12:27:11Z, window_minutes 44640; 'cursor-main' not in no_window. 3 dedicated tests PASSED.",
+      "paths": [
+        "app.py",
+        "tests/test_pace_api.py"
+      ]
+    },
+    {
+      "id": "2",
+      "type": "test",
+      "result": "pass",
+      "checked_with": "pytest test_non_cursor_lanes_match_pre_change_baseline; side-by-side run of head vs origin/main build_pace_payload on the same 7-provider fixture (check_ac12.py, check_baseline.py)",
+      "proof": "zai-main/commandcode-main/kimi-main/opencode-go-main lane dicts byte-identical between head and main; no 'label' key added anywhere outside the two Cursor lanes; head no_window == [deepseek-main, openrouter-main]; main puts cursor-main in no_window (pre-change behavior) while head does not.",
+      "paths": [
+        "app.py",
+        "tests/test_pace_api.py"
+      ]
+    },
+    {
+      "id": "3",
+      "type": "test",
+      "result": "pass",
+      "checked_with": "node --check on my own extraction of the inline script (node_check.py, rc=0); pytest test_monthly_column_renders_two_distinct_cursor_dots + test_static_inline_script_passes_node_check (PASSED); headless chromium-1234 render of head static/index.html with mock /api/pace (mock_server.py + my fixture) and pixel scan (scan_tall.py)",
+      "proof": "script 48453 bytes -> node --check green; my render at 1240x663@2x shows exactly two Cursor dots (#22d3ee at css(1106,354), #f59e0b at css(1106,392)) in the rightmost «месяц» column plus cyan/orange legend swatches; chromium --dump-dom contains «Cursor-модели» and «другие модели» (4x each) and pace-swatch backgrounds #22d3ee/#f59e0b; PR screenshot (2480x1326) pixel-scan shows the same two 24px dot clusters (#22d3ee n=489 @x≈2247, #f59e0b n=495) with two matching legend swatches, matching my independent render's geometry (dot spacing 38/39 css px).",
+      "paths": [
+        "static/index.html",
+        "tests/test_pace_api.py",
+        "docs/tasks/TASK-usage-board-cursor-pace/cursor-pace-desktop.png"
+      ]
+    },
+    {
+      "id": "4",
+      "type": "test",
+      "result": "pass",
+      "checked_with": "pytest tests/test_limits_api.py tests/test_cursor_provider.py -v (47 passed across the 3 files); full suite pytest -q = 67 passed; git diff origin/main...HEAD -- app.py | grep -i limit = no hits",
+      "proof": "All 9 test_limits_api.py tests and 28 test_cursor_provider.py tests green, including test_limits_keep_cursor_limits_on_export_failure; the Cursor /api/limits code path is untouched by the diff (no limits hunks in app.py).",
+      "paths": [
+        "app.py"
+      ]
+    },
+    {
+      "id": "ci",
+      "type": "ci",
+      "result": "pass",
+      "checked_with": "gh api repos/Rast53/usage-board/commits/621139794302e014f42f3eb6720639ae17484db6/check-runs; gh api '.../actions/runs?head_sha=...'",
+      "proof": "4/4 check-runs completed=success (build, test, compose-check, GitGuardian Security Checks); Actions run 'build' conclusion=success on head SHA.",
+      "paths": []
+    }
+  ]
+}
