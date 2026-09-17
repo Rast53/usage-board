@@ -12,7 +12,7 @@ Supported providers (a card appears only for the keys you provide):
 | Command Code GOAT | monthly credits + 5h / weekly windows |
 | Kimi Coding | weekly quota + 5h window |
 | OpenCode Go | monthly remaining + 5h / weekly windows |
-| Cursor | plan total % + Cursor-model % + other-model % |
+| Cursor | plan total % + Cursor-model % + other-model % + per-model tokens (cycle) |
 | DeepSeek | balance + 24h/7d spend |
 | OpenRouter | credits, key usage, per-model table |
 
@@ -135,8 +135,13 @@ The repull contract is checked by `deploy/check-pull-policy.sh` and by
 - Cursor has no API key: set `CURSOR_SESSION_TOKEN` (alias `CURSOR_TOKEN`) to
   your browser session token — the `WorkosCursorSessionToken` value, the bare
   access token, or the whole `Cookie:` header. Its undocumented dashboard usage
-  API is read-only. Refresh the token when it expires (the card then shows
-  «токен истёк»).
+  API is read-only. The card also downloads Cursor's read-only token export
+  (`/api/dashboard/export-usage-events-csv`, `strategy=tokens`) for the current
+  billing cycle and shows a per-model **Total Tokens** table, sorted descending.
+  The export is requested with explicit `startDate`/`endDate` (ms), so a full
+  history export is never pulled; when it fails the rest of the card stays live
+  and only the model table shows a reason. Refresh the token when it expires
+  (the card then shows «токен истёк»).
 - Set `BASIC_AUTH_USER`/`BASIC_AUTH_PASSWORD` whenever the dashboard is
   reachable from the internet — otherwise anyone can see your spend.
 - In app-only mode the app is published on `127.0.0.1:APP_PORT` (loopback
