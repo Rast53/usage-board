@@ -1,0 +1,14 @@
+[Unit]
+Description=usage-board autodeploy (repull image, recreate app)
+Documentation=https://github.com/Rast53/usage-board
+Requires=docker.service
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Repo checkout that holds the compose file and the host .env (secrets stay here).
+WorkingDirectory=/opt/usage-board
+# App-only stack; for the bundled Caddy/TLS mode use "-f docker-compose.yml".
+Environment=COMPOSE_FILES=-f compose.app-only.yml
+ExecStart=/opt/usage-board/deploy/autodeploy.sh

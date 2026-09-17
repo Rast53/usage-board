@@ -9,6 +9,7 @@
 services:
   app:
     image: ghcr.io/rast53/usage-board:latest
+    pull_policy: always          # repull :latest on every `up -d` (autodeploy)
     build: .                    # used when you run `up -d --build` (no registry needed)
     restart: unless-stopped
     env_file: .env
