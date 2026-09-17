@@ -1,0 +1,62 @@
+{
+  "schema": "evidence.v1",
+  "sha": "01c861c1d69c40112c0e8217e17f9079925743bb",
+  "items": [
+    {
+      "id": "1",
+      "type": "test",
+      "result": "pass",
+      "checked_with": "pytest tests/test_cursor_provider.py -v @01c861c (test_aggregate_cursor_csv_sums_total_tokens_and_sorts_desc, test_aggregate_cursor_csv_tolerates_empty_and_broken_cells, ..._accepts_snake_case_headers, ..._empty_or_unknown_is_unavailable) + независимый /tmp/pr7v/verify_ac.py",
+      "proof": "Сумма Total Tokens по Model, сортировка desc, мусор/битые ячейки не роняют парсер: фикстура 3 модели → [{cursor-grok-4.6-high: 570500150},{composer-2.5: 138450000},{claude-opus-5-thinking-high: 34340600}], total 743290750; строка без модели и строка без числовых ячеек отброшены; битый Total Tokens → fallback на Output Tokens (600); malformed-входы ('', None, bytes, '<<>>') → available=false, без исключений. Заголовки фикстуры совпадают с live-экспортом (по спеке), live-происхождение фикстуры независимо не проверяемо (сети в verify нет).",
+      "paths": [
+        "app.py",
+        "tests/test_cursor_provider.py"
+      ]
+    },
+    {
+      "id": "2",
+      "type": "test",
+      "result": "pass",
+      "checked_with": "pytest (test_wallet_export_success_exposes_models, test_wallet_export_failure_keeps_other_fields, test_limits_keep_cursor_limits_on_export_failure) + независимый /tmp/pr7v/verify_ac.py (diff wallet success vs failure при pinned now_iso)",
+      "proof": "Успех: wallet.models.available=true, items=3, source=cursor-export-csv, total.used_percent=10.19. Сбой (side_effect (None,{},b'','timed out')): models.available=false, reason непустой, все остальные ключи wallet идентичны успешному пути (0 расхождений кроме models). /api/limits при сбое: 200, cursor ok=true, kind=cursor-usage, limits={total,cursor_models,other_models}.",
+      "paths": [
+        "app.py",
+        "tests/test_cursor_provider.py"
+      ]
+    },
+    {
+      "id": "3",
+      "type": "test",
+      "result": "pass",
+      "checked_with": "pytest (test_cursor_export_url_uses_window_and_tokens_strategy, test_probe_export_uses_windowed_url_not_full_export, test_probe_without_cycle_window_skips_export) + независимый прогон + grep по app.py",
+      "proof": "cursor_export_url(1776672371000,1779264371000) = https://cursor.com/api/dashboard/export-usage-events-csv?startDate=1776672371000&endDate=1779264371000&strategy=tokens; probe с циклом: ровно 2 вызова, второй — оконный экспорт; без окна (и при end<=start) — 0 обращений к экспорту; URL экспорта конструируется только внутри cursor_export_url, вызывается только из _cursor_fetch_export после проверки окна — полный экспорт без параметров недостижим.",
+      "paths": [
+        "app.py",
+        "tests/test_cursor_provider.py"
+      ]
+    },
+    {
+      "id": "4",
+      "type": "test",
+      "result": "pass",
+      "checked_with": "pytest (test_probe_without_token_makes_no_http_calls) + независимые /tmp/pr7v/verify_ac.py и /tmp/pr7v/check_expired.py + сравнение wallet main↔head",
+      "proof": "Без CURSOR_SESSION_TOKEN: http_request.call_count=0, status=manual, ключа models в пробе нет; wallet = как до задачи (manual, models.available=false; diff с origin/main — только текст models.detail и probed_at). Expired (401): вызываются только прежние plan-эндпоинты (api2.cursor.sh .../GetCurrentPeriodUsage и cursor.com/api/usage-summary), export-URL не запрашивается, status=expired, models в пробе отсутствует.",
+      "paths": [
+        "app.py",
+        "tests/test_cursor_provider.py"
+      ]
+    },
+    {
+      "id": "5",
+      "type": "test",
+      "result": "pass",
+      "checked_with": "pytest test_static_inline_script_passes_node_check (node v22.22.3) + независимый V8 parse-check и vm-харнесс /tmp/pr7v/render_check.js + tesseract OCR скрина из PR",
+      "proof": "node --check на inline-скрипте из static/index.html — зелёный (и pytest, и независимый parse). Рендер реального inline-JS с мок-wallet: renderCursorCard() возвращает <table class=\"models\"> с строками cursor-grok-4.6-high/composer-2.5/claude-opus-5-thinking-high и числами, при models.available=false — reason-заметка без таблицы. Скрин docs/tasks/TASK-usage-board-cursor-models/cursor-models-desktop.png в PR (1440x1644, desktop), OCR показывает карточку Cursor с секцией «По моделям · цикл» и строками claude-4.6-sonnet 3 600 / composer-2.5-fast 2 900 / gemini-3-pro 4 450 / gpt-5.3-codex 800 (формат чисел = fmt() ru-RU).",
+      "paths": [
+        "static/index.html",
+        "tests/test_cursor_provider.py",
+        "docs/tasks/TASK-usage-board-cursor-models/cursor-models-desktop.png"
+      ]
+    }
+  ]
+}
