@@ -1,0 +1,28 @@
+{
+  "verdict": "PASS",
+  "sha": "621139794302e014f42f3eb6720639ae17484db6",
+  "reasons": [
+    "AC1: PASS — independent run of head build_pace_payload on a fixture with cursor-main (total 85.56 / cursor_models 86.7 / other_models 74.18, next_reset_at=2026-09-25T12:27:11Z): cursor-main in accounts with exactly two window==monthly lanes — 86.7 «Cursor-модели», 74.18 «другие модели», both reset_at 2026-09-25T12:27:11Z; cursor-main absent from no_window. Repo tests test_cursor_gets_two_monthly_lanes_with_labels / test_cursor_simplified_fixture_uses_account_level_reset green.",
+    "AC2: PASS — head lanes for zai/commandcode/kimi/opencode-go are identical to origin/main (merge-base 4f86b9b) output on the same fixture, verified by running main build_pace_payload side by side; no label key on any non-cursor lane; no_window == [deepseek-main, openrouter-main]. The pinned BASELINE_LANES in tests/test_pace_api.py matches real main output exactly.",
+    "AC3: PASS — node --check rc=0 on the script I extracted from head static/index.html (48453 bytes); test_monthly_column_renders_two_distinct_cursor_dots + test_static_inline_script_passes_node_check green; my own headless-chromium (chromium-1234) render of the head page with mock /api/pace shows two Cursor dots (#22d3ee / #f59e0b) in the «месяц» column with both labels in the DOM, plus matching legend swatches; the PR screenshot docs/tasks/TASK-usage-board-cursor-pace/cursor-pace-desktop.png (2480x1326) shows the same two 24px dot clusters (~x=1123 css) and swatches and is embedded in the PR body.",
+    "AC4: PASS — tests/test_limits_api.py (9 tests) and tests/test_cursor_provider.py (28 tests, incl. test_limits_keep_cursor_limits_on_export_failure) all green; full suite 67 passed on head; the app.py diff contains no limits-related hunks (grep 'limit' finds nothing in the diff).",
+    "CI: build / test / compose-check / GitGuardian all completed=success on head SHA 621139794302e014f42f3eb6720639ae17484db6; branch ref dsh/TASK-usage-board-cursor-pace still points at that SHA (no force-push). Diff scope: app.py, static/index.html (+23/-5), new tests/test_pace_api.py, docs (progress + desktop screenshot) — 5 files, no existing tests modified."
+  ],
+  "model": "deepseek/deepseek-v4.1-flash",
+  "tokens_in": 46001,
+  "tokens_out": 31594,
+  "cache_read": 2283904,
+  "cost_usd": 0.032708,
+  "peak": false,
+  "usage_source": "state.db",
+  "usage": {
+    "model": "deepseek/deepseek-v4.1-flash",
+    "tokens_in": 46001,
+    "tokens_out": 31594,
+    "cache_read": 2283904,
+    "cost_usd": 0.032708,
+    "peak": false,
+    "usage_source": "state.db",
+    "usage_missing": false
+  }
+}
