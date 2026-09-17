@@ -864,6 +864,28 @@ function renderOpencodeGoCard(w) {
     },
   });
 }
+function cursorModelsTable(m) {
+  m = m || {};
+  const head = '<div class="details-section">По моделям · цикл</div>';
+  if (!m.available) {
+    return head + '<div class="table-wrap"><div class="models-note">' +
+      escapeHtml(m.reason || 'нет разбивки по моделям') + '</div></div>';
+  }
+  const items = m.items || [];
+  if (!items.length) {
+    return head + '<div class="table-wrap"><div class="models-note">нет данных за период</div></div>';
+  }
+  let html = head + '<div class="table-wrap"><table class="models"><thead><tr>' +
+    '<th>модель</th><th class="num">токены</th></tr></thead><tbody>';
+  items.forEach(function(it) {
+    const tokens = (it.total_tokens != null) ? it.total_tokens : tokenSum(it);
+    html += '<tr><td class="model">' + escapeHtml(it.model || '?') + '</td>' +
+      '<td class="num">' + fmt(tokens) + '</td></tr>';
+  });
+  html += '</tbody></table></div>';
+  return html + '<div class="details-src">источник: ' +
+    escapeHtml(m.source || 'cursor-export-csv') + '</div>';
+}
 function renderCursorCard(w) {
   return renderProviderCard(w, {
     id: 'cursor-card', prov: 'cursor', title: 'Cursor · план',
@@ -891,6 +913,7 @@ function renderCursorCard(w) {
         row('всего', card.total) +
         row('Cursor-модели', card.cursor_models) +
         row('другие модели', card.other_models) +
+        cursorModelsTable(card.models) +
         '<div class="details-src">источник: Cursor dashboard usage API (session token)</div>' +
         (card.error ? '<div class="details-src bad-text">' + escapeHtml(card.error) + '</div>' : '');
     },
