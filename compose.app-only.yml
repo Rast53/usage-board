@@ -1,5 +1,7 @@
 # usage-board — app-only deployment (behind YOUR OWN reverse proxy).
-# Single-file compose: the app published on APP_PORT (default 8080), no Caddy/TLS.
+# Single-file compose: the app published on 127.0.0.1:APP_PORT (default 8080),
+# loopback only, no Caddy/TLS. The port is NOT reachable from other hosts; the
+# local reverse proxy (nginx/Caddy/Traefik) is the only way in.
 #
 # Env delivery: variables come from the runner environment (a Dockhand/hawser
 # agent passes its stack env via --env-file; locally `export` them or keep a
@@ -32,7 +34,9 @@ services:
     volumes:
       - app-data:/app/data
     ports:
-      - "${APP_PORT:-8080}:3210"
+      # Loopback only: never publish the bare app port on 0.0.0.0. TLS/auth is
+      # terminated by the host reverse proxy in front of 127.0.0.1:APP_PORT.
+      - "127.0.0.1:${APP_PORT:-8080}:3210"
     healthcheck:
       # 401 is fine: basic auth may be enabled. Anything else = unhealthy.
       test: ["CMD", "python3", "-c", "import urllib.request,urllib.error,sys;\ntry: urllib.request.urlopen('http://127.0.0.1:3210/api/health', timeout=5)\nexcept urllib.error.HTTPError as e: sys.exit(0 if e.code==401 else 1)"]
