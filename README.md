@@ -65,10 +65,13 @@ to it from your nginx/Caddy/Traefik:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.app-only.yml up -d
-# app now listens on host port 8080 (APP_PORT in .env)
+# app now listens on 127.0.0.1:8080 only (APP_PORT in .env)
 ```
 
-Keep `BASIC_AUTH_*` set unless your proxy already authenticates.
+The published port is bound to **loopback only** (`127.0.0.1:APP_PORT`), so the
+bare HTTP port is not reachable from other hosts — terminate TLS and auth at
+your local proxy. Keep `BASIC_AUTH_*` set unless your proxy already
+authenticates.
 
 Minimal nginx server block (with your own cert):
 
@@ -136,6 +139,9 @@ The repull contract is checked by `deploy/check-pull-policy.sh` and by
   «токен истёк»).
 - Set `BASIC_AUTH_USER`/`BASIC_AUTH_PASSWORD` whenever the dashboard is
   reachable from the internet — otherwise anyone can see your spend.
+- In app-only mode the app is published on `127.0.0.1:APP_PORT` (loopback
+  only), so the bare HTTP port is never exposed on `0.0.0.0`; only the local
+  reverse proxy can reach it.
 - UI is Russian-first (English UI is a possible contribution).
 
 ## API
