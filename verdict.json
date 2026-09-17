@@ -1,0 +1,27 @@
+{
+  "verdict": "PASS",
+  "sha": "8d0eb5a2b53a7c3428a29ed67d37578fd51828e3",
+  "reasons": [
+    "AC1: рендер PR-файла compose.app-only.yml с APP_PORT=8090 даёт ровно целевой кортеж AC1 — host_ip=127.0.0.1, published=8090, target=3210 — и локально (compose v5.5.1), и на самом fornex-usa (compose v5.3.1, копия файла в /tmp хоста, без деплоя). Тот же файл, реально поднятый скатч-стеком на chuwi (docker 29.8.0, проект ub5accept, порт 18090): docker ps -> '127.0.0.1:18090->3210/tcp', ss -tln -> только LISTEN 127.0.0.1:18090 (ни 0.0.0.0, ни [::]); стек снят (down -v, 0 контейнеров). Гейты не вакуумные: мутация (снятие префикса 127.0.0.1:) валит 3 теста, восстановление — 15/15; полный pytest tests/ -> 48 passed (43 базы + 5 новых). Живое наблюдение на самом хосте (docker ps/ss после up -d) отложено осознанно: на fornex-usa /opt/usage-board/compose.app-only.yml пока старый, контейнер usage-board-app-1 сейчас 0.0.0.0:8090->3210; APP_PORT=8090 в хостовом .env есть; таймер usage-board-autodeploy.timer каждые 5 мин выполняет 'compose up -d --no-deps app', поэтому после обновления файла на хосте состояние AC1 достигается автоматически в течение <=5 мин (или сразу после ручного up -d). Единственный оставшийся шаг — ops-обновление файла на хосте; деплой роли запрещён, наблюдение помечено type=manual/result=skip (правило манифеста: не блокирует).",
+    "AC2: половина про фронт подтверждена живьём — https://usage.ohera.ru:8443/ -> 401 (nginx/1.24.0), upstream vhost'а http://127.0.0.1:8090 (loopback); дифф не трогает nginx/Caddy/enable-tls, так что прежний 401 сохраняется. Негативная половина (refused/timeout на 89.127.199.57:8090) пока НЕ выполняется: сейчас порт доступен извне и отвечает 401 (uvicorn) и по публичному IP, и по tailnet — это до-изменённое состояние, которое PR закрывает. Механика закрытия воспроизведена: (а) скатч-стек с PR-файлом не имеет не-loopback слушателей; (б) cross-host проба fornex-usa -> chuwi:18090 (loopback-bind) = REFUSED, контроль fornex-usa -> chuwi:8090 (0.0.0.0-bind) = CONNECTED. Повторная проба после ops-шага — та же probe_ext.py.",
+    "AC3: deploy/check-pull-policy.sh на head -> 'OK: compose.app-only.yml services.app.pull_policy=always' rc=0; тест test_check_pull_policy_script_enforces_app_repull зелёный; PR не трогает deploy/* и .github/workflows. CI на 8d0eb5a: compose-check + test + build + GitGuardian — все completed/success; в логе job test '48 passed, 4 warnings in 0.77s', в compose-check 'compose config OK' (рендерятся docker-compose.yml, --profile tls, app-only оверлей).",
+    "Гигиена и роль: head SHA 8d0eb5a не сдвинулся (git ls-remote + gh pr view: open/MERGEABLE/не draft/base main, 3 коммита); дифф 166+/8- по 6 файлам (.env.example, README.md, оба compose, tests/test_deploy_config.py, docs/tasks/TASK-usage-board-close-plain-port/progress.md); запрещённых путей (.github/workflows, app-код, static/, Dockerfile, миграции), секретов и .env нет; существующие тесты не ослаблены (только вставки). Код не менял, не коммитил, PR/ветки не создавал, деплой не запускал: на fornex-usa только read-only команды + рендер копии файла в /tmp (убран); скатч-стек ub5accept полностью снят. Машинные выгрузки прогона: /opt/hermes/verify-workspace/ub5-ev/ (probe_ext_out.json, rendered_head_apponly.json, rendered_host_apponly.json). Единственные непокрытые живьём наблюдения — post-deploy состояния на самом хосте (оба помечены skip и перечислены)."
+  ],
+  "model": "deepseek/deepseek-v4.1-flash",
+  "tokens_in": 51745,
+  "tokens_out": 58812,
+  "cache_read": 3294336,
+  "cost_usd": 0.105864,
+  "peak": true,
+  "usage_source": "state.db",
+  "usage": {
+    "model": "deepseek/deepseek-v4.1-flash",
+    "tokens_in": 51745,
+    "tokens_out": 58812,
+    "cache_read": 3294336,
+    "cost_usd": 0.105864,
+    "peak": true,
+    "usage_source": "state.db",
+    "usage_missing": false
+  }
+}
