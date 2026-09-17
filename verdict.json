@@ -1,0 +1,30 @@
+{
+  "verdict": "PASS",
+  "sha": "01c861c1d69c40112c0e8217e17f9079925743bb",
+  "reasons": [
+    "AC1: агрегатор CSV — items с суммой Total Tokens по моделям, сортировка desc; мусорные строки отбрасываются, битые/пустые ячейки не роняют парсер (pytest 4/4 зелёные + независимый прогон на собственной live-shaped фикстуре: cursor-grok-4.6-high 570 500 150 / composer-2.5 138 450 000 / claude-opus-5-thinking-high 34 340 600, total 743 290 750; битый Total Tokens → fallback на компоненты; '', None, bytes, '<<>>' → available=false без исключений).",
+    "AC2: успех экспорта → models.available=true, items=3, source=cursor-export-csv; сбой (mock timeout) → available=false с reason, остальные поля wallet побайтово идентичны успешному пути (проверено независимым diff при фиксированном now_iso); /api/limits отдаёт cursor-лимиты total/cursor_models/other_models.",
+    "AC3: URL всегда с startDate/endDate (epoch ms) и strategy=tokens; без окна биллинг-цикла экспорт не запрашивается вообще (0 вызовов), параметрического/полного экспорта в коде нет (URL строится только в cursor_export_url, вызывается только за проверкой окна).",
+    "AC4: без CURSOR_SESSION_TOKEN — 0 HTTP-вызовов, статус manual, ключа models в пробе нет; expired (401) — CSV-URL не запрашивается (только два прежних plan-эндпоинта), карточка как до задачи: diff wallet main↔head только текст models.detail и probed_at, models.available=false в обоих.",
+    "AC5: node --check зелёный (pytest-тест + независимая V8-проверка inline-скрипта); рендер реального inline-JS с мок-wallet даёт таблицу моделей (vm-харнесс: <table class=\"models\">, строки моделей, reason-заметка при unavailable); скрин desktop 1440x1644 в PR, OCR подтверждает секцию «По моделям · цикл» с моделью/токенами.",
+    "CI на head SHA 01c861c: check-runs test/build/compose-check/GitGuardian — success (4/4); PR OPEN, mergeable CLEAN, headRefOid не сдвинулся. Полный pytest на head: 60 passed (origin/main: 48 passed) — регрессий нет.",
+    "Наблюдения (не блокеры): pr_guards даёт REVIEW-TESTS из-за правки существующего tests/test_cursor_provider.py, но правка чисто аддитивная (0 удалённых строк в tests/) — решение по вайверу за диспетчером/владельцем; .env.example изменён только комментариями (DoD «без изменений»), новых env-переменных нет; в скрине мок-набор моделей не отсортирован desc (сортировка серверная, покрыта AC1)."
+  ],
+  "model": "deepseek/deepseek-v4.1-flash",
+  "tokens_in": 64559,
+  "tokens_out": 37290,
+  "cache_read": 3026944,
+  "cost_usd": 0.082277,
+  "peak": true,
+  "usage_source": "state.db",
+  "usage": {
+    "model": "deepseek/deepseek-v4.1-flash",
+    "tokens_in": 64559,
+    "tokens_out": 37290,
+    "cache_read": 3026944,
+    "cost_usd": 0.082277,
+    "peak": true,
+    "usage_source": "state.db",
+    "usage_missing": false
+  }
+}
