@@ -1106,6 +1106,12 @@ const PACE_COLORS = {
   'opencode-go': '#c084fc',
   'opencode-go-main': '#c084fc'
 };
+/* Cursor emits two monthly lanes under one provider, so they carry a lane
+   label; give each label its own colour to keep the two dots apart. */
+const PACE_LANE_COLORS = {
+  'Cursor-модели': '#22d3ee',
+  'другие модели': '#f59e0b'
+};
 const PACE_LABELS = {
   'zai-main': 'z.ai',
   zai: 'z.ai',
@@ -1127,6 +1133,18 @@ function paceProviderLabel(id) {
 }
 function paceProviderColor(id) {
   return PACE_COLORS[id] || '#8b9bb0';
+}
+/* A lane may carry its own label (Cursor's two monthly meters); fall back to
+   the provider name/colour for every other lane. */
+function paceLaneLabel(row) {
+  if (row && row.lane && row.lane.label) return row.lane.label;
+  return paceProviderLabel(row && row.provider);
+}
+function paceLaneColor(row) {
+  if (row && row.lane && row.lane.label && PACE_LANE_COLORS[row.lane.label]) {
+    return PACE_LANE_COLORS[row.lane.label];
+  }
+  return paceProviderColor(row && row.provider);
 }
 function fmtResetMsk(v) {
   const d = parseDate(v);
@@ -1175,10 +1193,10 @@ function renderPaceSvg(rows) {
   const x0 = xOf(0), y0 = yOf(0), x1 = xOf(100), y1 = yOf(100);
   let dots = '';
   rows.forEach(function(row) {
-    const color = paceProviderColor(row.provider);
+    const color = paceLaneColor(row);
     const cx = xOf(row.lane.norm_percent);
     const cy = yOf(row.lane.used_percent);
-    const name = escapeHtml(paceProviderLabel(row.provider));
+    const name = escapeHtml(paceLaneLabel(row));
     dots += '<circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="6" fill="' + color +
       '" stroke="#0b0f14" stroke-width="1.4"><title>' + name +
       ' факт ' + escapeHtml(String(row.lane.used_percent)) +
@@ -1217,7 +1235,7 @@ function renderPaceColumn(title, windowKey, accounts) {
     resetHtml = '<div class="pace-reset">сброс: ' + escapeHtml(fmtResetMsk(resets[0])) + '</div>';
   } else if (resets.length > 1) {
     resetHtml = rows.map(function(row) {
-      return '<div class="pace-reset">' + escapeHtml(paceProviderLabel(row.provider)) +
+      return '<div class="pace-reset">' + escapeHtml(paceLaneLabel(row)) +
         ' сброс: ' + escapeHtml(fmtResetMsk(row.lane.reset_at)) + '</div>';
     }).join('');
   }
@@ -1230,8 +1248,8 @@ function renderPaceColumn(title, windowKey, accounts) {
       ? '<span class="pace-stale">данные устарели (' + Math.round(age / 60) + ' мин)</span>'
       : '';
     return '<div class="pace-row">' +
-      '<span class="pace-swatch" style="background:' + paceProviderColor(row.provider) + '"></span>' +
-      '<span>' + escapeHtml(paceProviderLabel(row.provider)) + '</span>' +
+      '<span class="pace-swatch" style="background:' + paceLaneColor(row) + '"></span>' +
+      '<span>' + escapeHtml(paceLaneLabel(row)) + '</span>' +
       '<span class="pace-used">' + escapeHtml(usedLabel) + '</span>' +
       '<span class="pace-pill ' + pill.cls + '" title="' + escapeHtml(PACE_TOOLTIP) + '">' +
         escapeHtml(pill.text) + '</span>' +
