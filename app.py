@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import base64
 import calendar
+import csv
 import ctypes
 import gc
 import html as html_lib
+import io
 import json
 import os
 import secrets
@@ -85,6 +87,12 @@ OPENCODE_GO_USAGE_PATH = "/usage"
 CURSOR_DEFAULT_BASE_URL = "https://api2.cursor.sh"
 CURSOR_USAGE_PATH = "/aiserver.v1.DashboardService/GetCurrentPeriodUsage"
 CURSOR_SUMMARY_URL = "https://cursor.com/api/usage-summary"
+# Dashboard "Export" download (strategy=tokens) — per-model token CSV for a
+# billing window. Undocumented; the board only requests it with startDate /
+# endDate so it never pulls a full-history export.
+CURSOR_EXPORT_URL = "https://cursor.com/api/dashboard/export-usage-events-csv"
+CURSOR_EXPORT_STRATEGY = "tokens"
+CURSOR_MODELS_SOURCE = "cursor-export-csv"
 # Published Go windows (docs 2026-08-25). The usage API returns used %, not USD.
 OPENCODE_GO_CAPS: dict[str, float] = {
     "session": 12.0,
@@ -3639,6 +3647,223 @@ def parse_cursor_dashboard_usage(data: Any) -> dict[str, Any]:
     return out
 
 
+# --- Cursor per-model breakdown (dashboard token CSV export) -----------------
+# GET cursor.com/api/dashboard/export-usage-events-csv
+#     ?startDate=<epoch-ms>&endDate=<epoch-ms>&strategy=tokens
+# Undocumented, best-effort. Columns are resolved by header name because Cursor
+# adds columns over time; token totals are summed per model for the cycle.
+
+_CURSOR_CSV_MODEL_HEADERS = ("model", "model name", "modelname")
+_CURSOR_CSV_TOTAL_HEADERS = ("total tokens", "total_tokens", "totaltokens")
+_CURSOR_CSV_TOKEN_HEADERS: dict[str, tuple[str, ...]] = {
+    "input_tokens": (
+        "input (w/o cache write)",
+        "input (without cache write)",
+        "input_wo_cache",
+        "input_tokens",
+    ),
+    "cache_write_tokens": (
+        "input (w/ cache write)",
+        "input (with cache write)",
+        "input_w_cache",
+        "cache_write_tokens",
+    ),
+    "cache_read_tokens": ("cache read", "cache_read", "cache_read_tokens"),
+    "output_tokens": ("output tokens", "output_tokens"),
+}
+
+
+def _cursor_csv_norm_header(name: Any) -> str:
+    return " ".join(str(name or "").strip().lower().split())
+
+
+def _cursor_csv_int(value: Any) -> int | None:
+    """Parse a token cell; empty/None/broken cells return None (never raise)."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        try:
+            return int(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+    text = str(value).strip().replace(",", "").replace("_", "").replace(" ", "")
+    if not text:
+        return None
+    try:
+        return int(float(text))
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _cursor_csv_columns(fieldnames: Any) -> dict[str, str]:
+    """Map normalized Cursor CSV header names to our token field names."""
+    cols: dict[str, str] = {}
+    for name in fieldnames or []:
+        norm = _cursor_csv_norm_header(name)
+        if norm in _CURSOR_CSV_MODEL_HEADERS and "model" not in cols:
+            cols["model"] = name
+            continue
+        if norm in _CURSOR_CSV_TOTAL_HEADERS and "total_tokens" not in cols:
+            cols["total_tokens"] = name
+            continue
+        for key, aliases in _CURSOR_CSV_TOKEN_HEADERS.items():
+            if norm in aliases and key not in cols:
+                cols[key] = name
+                break
+    return cols
+
+
+def aggregate_cursor_csv_models(csv_text: Any) -> dict[str, Any]:
+    """Roll Cursor's export-usage CSV into per-model token totals for the cycle.
+
+    Returns a models block (``available``/``source``/``items``) whose items carry
+    ``model`` and ``total_tokens``, sorted by tokens descending. A row without a
+    model, or without any usable numeric token cell, is discarded; a single
+    empty/broken ``Total Tokens`` cell falls back to the component columns, so a
+    garbage row never breaks the whole parse.
+    """
+    if not isinstance(csv_text, str) or not csv_text.strip():
+        return models_unavailable("Cursor export CSV пуст")
+    reader = csv.DictReader(io.StringIO(csv_text.lstrip("\ufeff")))
+    cols = _cursor_csv_columns(reader.fieldnames)
+    if "model" not in cols or not any(
+        key in cols for key in ("total_tokens", *_CURSOR_CSV_TOKEN_HEADERS)
+    ):
+        return models_unavailable("Cursor export CSV: неизвестный формат")
+
+    by_model: dict[str, dict[str, Any]] = {}
+    for row in reader:
+        if not isinstance(row, dict):
+            continue
+        model_raw = row.get(cols["model"])
+        model = str(model_raw).strip() if model_raw is not None else ""
+        if not model:
+            continue  # garbage / summary row without a model -> discard
+
+        components: dict[str, int] = {}
+        for key in _CURSOR_CSV_TOKEN_HEADERS:
+            col = cols.get(key)
+            if col is None:
+                continue
+            value = _cursor_csv_int(row.get(col))
+            if value is not None:
+                components[key] = max(0, value)
+
+        total: int | None = None
+        if "total_tokens" in cols:
+            total = _cursor_csv_int(row.get(cols["total_tokens"]))
+        if total is None:
+            # Broken/empty "Total Tokens": fall back to the component columns so
+            # one bad cell does not drop an otherwise valid row.
+            if not components:
+                continue  # nothing numeric -> drop the garbage row
+            total = sum(components.values())
+        total = max(0, total)
+
+        bucket = by_model.setdefault(
+            model,
+            {
+                "model": model,
+                "total_tokens": 0,
+                **{key: 0 for key in _CURSOR_CSV_TOKEN_HEADERS},
+            },
+        )
+        bucket["total_tokens"] += total
+        for key, value in components.items():
+            bucket[key] += value
+
+    items = sorted(
+        by_model.values(),
+        key=lambda row: (-int(row["total_tokens"]), str(row["model"]).lower()),
+    )
+    return {
+        "available": True,
+        "source": CURSOR_MODELS_SOURCE,
+        "reason": None,
+        "items": items,
+        "totals": {
+            "total_tokens": sum(int(row["total_tokens"]) for row in items),
+            "models": len(items),
+        },
+        "note": "Cursor export CSV · strategy=tokens · за биллинг-цикл",
+    }
+
+
+# Aliases: the aggregator is referred to by a couple of natural names.
+aggregate_cursor_models_csv = aggregate_cursor_csv_models
+parse_cursor_export_csv = aggregate_cursor_csv_models
+
+
+def cursor_export_url(start_ms: int, end_ms: int) -> str:
+    """Export URL with an explicit billing window (never a full export)."""
+    query = urlencode(
+        {
+            "startDate": int(start_ms),
+            "endDate": int(end_ms),
+            "strategy": CURSOR_EXPORT_STRATEGY,
+        }
+    )
+    return f"{CURSOR_EXPORT_URL}?{query}"
+
+
+build_cursor_export_url = cursor_export_url
+
+
+def _cursor_iso_to_ms(value: Any) -> int | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    parsed = parse_snapshot_ts(value)
+    if not parsed:
+        return None
+    return int(parsed[0] * 1000)
+
+
+def _cursor_export_window(parsed: dict[str, Any]) -> tuple[int | None, int | None]:
+    """Epoch-ms [start, end] of the billing cycle, or (None, None) if unknown."""
+    start_ms = _cursor_iso_to_ms(parsed.get("billing_cycle_start"))
+    end_ms = _cursor_iso_to_ms(parsed.get("billing_cycle_end"))
+    if start_ms is None or end_ms is None or end_ms <= start_ms:
+        return None, None
+    return start_ms, end_ms
+
+
+def _cursor_fetch_export(
+    token: str, proxy: str | None, start_ms: int, end_ms: int
+) -> dict[str, Any]:
+    url = cursor_export_url(start_ms, end_ms)
+    st, _hdrs, raw, err = http_request(
+        url,
+        method="GET",
+        headers=_cursor_auth_headers(token, json_body=False),
+        proxy=proxy,
+        timeout=15.0,
+    )
+    text = raw.decode("utf-8", errors="replace") if raw else ""
+    return {"status": st, "text": text, "error": err, "url": url}
+
+
+def _cursor_export_models(
+    token: str, proxy: str | None, parsed: dict[str, Any]
+) -> dict[str, Any]:
+    """Best-effort per-model tokens for the cycle; never raises."""
+    start_ms, end_ms = _cursor_export_window(parsed)
+    if start_ms is None or end_ms is None:
+        # Without a window the endpoint would return a full export — don't.
+        return models_unavailable("Cursor export CSV: нет окна биллинг-цикла")
+    fetched = _cursor_fetch_export(token, proxy, start_ms, end_ms)
+    st = fetched.get("status")
+    text = fetched.get("text")
+    if st != 200 or not text:
+        reason = f"Cursor export CSV недоступен: HTTP {st or '—'}"
+        if fetched.get("error"):
+            reason = f"{reason} {fetched['error']}"
+        return models_unavailable(reason)
+    models = aggregate_cursor_csv_models(text)
+    if models.get("available"):
+        models["endpoint"] = fetched.get("url")
+    return models
+
+
 def _cursor_api_error(data: Any, err: str | None, st: int | None) -> str:
     if isinstance(data, dict):
         message = data.get("message") or data.get("error")
@@ -3811,6 +4036,7 @@ def probe_cursor_usage() -> dict[str, Any]:
     result["limit_cents"] = parsed.get("limit_cents")
     result["remaining_cents"] = parsed.get("remaining_cents")
     result["source"] = f"cursor-{fetched.get('endpoint') or 'dashboard-usage'}"
+    result["models"] = _cursor_export_models(token, proxy, parsed)
     parts = [win["summary"] for win in (total, cursor_models, other_models) if win]
     result["remaining_summary"] = f"{plan_label} · " + " · ".join(parts) if parts else plan_label
     return result
@@ -3845,9 +4071,8 @@ def build_cursor_wallet(probe: dict[str, Any] | None) -> dict[str, Any] | None:
         "spend_series_7d": _empty_spend_series(
             "%", "Cursor: dashboard usage has no USD history"
         ),
-        "models": models_unavailable(
-            "Cursor GetCurrentPeriodUsage has no per-model breakdown"
-        ),
+        "models": probe.get("models")
+        or models_unavailable("Cursor: разбивка по моделям недоступна"),
         "source": probe.get("source") or "cursor-dashboard-usage",
         "via": probe.get("via"),
     }
