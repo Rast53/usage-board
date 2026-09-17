@@ -7,6 +7,8 @@ the Cursor UI). Extends the existing Cursor card (`CURSOR_SESSION_TOKEN`) with a
 per-model **Total Tokens** table sourced from Cursor's read-only dashboard CSV
 export. Tests, docs and a PR; no deploy.
 
+PR: https://github.com/Rast53/usage-board/pull/7
+
 ## Done (this branch)
 
 - `app.py`: new per-model export pipeline.
