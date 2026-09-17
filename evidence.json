@@ -1,0 +1,68 @@
+{
+  "schema": "evidence.v1",
+  "sha": "8d0eb5a2b53a7c3428a29ed67d37578fd51828e3",
+  "items": [
+    {
+      "id": "1",
+      "type": "diff",
+      "result": "pass",
+      "checked_with": "git diff origin/main...HEAD (merge-base 273382c = tip origin/main); gh api repos/Rast53/usage-board/pulls/5/files; grep-скан репозитория по '3210|0.0.0.0|APP_PORT'",
+      "proof": "Публикация приложения переведена на loopback в обоих app-only файлах: в compose.app-only.yml и docker-compose.app-only.yml строка \"${APP_PORT:-8080}:3210\" -> \"127.0.0.1:${APP_PORT:-8080}:3210\" (в оверлее — ports: !override). Других публикаций app-порта в репо нет: docker-compose.yml (Caddy) держит app на expose: 3210 без ports; Dockerfile-биндинг 0.0.0.0 — внутри контейнера, наружу не публикуется. Дифф ровно 6 файлов; pull_policy-строка, env-контракт, deploy/*, .github/* не изменены; секретов в добавленных строках нет.",
+      "paths": [
+        "compose.app-only.yml",
+        "docker-compose.app-only.yml"
+      ]
+    },
+    {
+      "id": "1",
+      "type": "test",
+      "result": "pass",
+      "checked_with": "docker compose -f compose.app-only.yml config --format json (APP_PORT=8090) локально (compose v5.5.1) и на fornex-usa (compose v5.3.1; копия PR-файла в /tmp хоста, рендер без деплоя); pytest tests/ -q (venv uba-venv) в /opt/hermes/verify-workspace/ub5-ver; скатч-стек ub5accept на chuwi (docker 29.8.0): APP_PORT=18090 up -d -> docker ps/ss -tln -> down -v; мутация с восстановлением",
+      "proof": "Рендер: ports=[{mode:ingress, host_ip:'127.0.0.1', target:3210, published:'8090', protocol:'tcp'}] — точный целевой кортеж AC1 (совпал на обеих версиях compose, включая сам хост). Новый тест test_rendered_app_only_port_is_loopback утверждает это же; полный прогон tests/ -> 48 passed. Скатч-стек с этим же файлом: docker ps -> '127.0.0.1:18090->3210/tcp', ss -tln -> единственный слушатель LISTEN 127.0.0.1:18090 (ни 0.0.0.0, ни [::]) — движок действительно создаёт loopback-only проброс; стек снят. Мутация (снят префикс 127.0.0.1:): падают test_app_only_compose_publishes_loopback_only, test_no_compose_publishes_app_port_on_all_interfaces, test_rendered_app_only_port_is_loopback; после git checkout — 15/15 зелёные. Живое наблюдение на fornex-usa отложено — см. пункт id 1 type=manual.",
+      "paths": [
+        "compose.app-only.yml",
+        "tests/test_deploy_config.py"
+      ]
+    },
+    {
+      "id": "1",
+      "type": "manual",
+      "result": "skip",
+      "checked_with": "ssh fornex-usa (read-only): docker ps -a / docker port usage-board-app-1 / ss -tlnp / docker inspect; /opt/usage-board (ports-строка, .env APP_PORT); systemctl list-timers usage-board-autodeploy",
+      "proof": "LIVE-факт AC1 (docker ps = 127.0.0.1:8090->3210; ss — только 127.0.0.1) на момент вердикта не наблюдаем: /opt/usage-board/compose.app-only.yml на хосте ещё старый (\"${APP_PORT:-8080}:3210\"), контейнер usage-board-app-1 (created 2026-09-17T04:48Z) отдаёт '3210/tcp -> 0.0.0.0:8090' и '[::]:8090'; ss показывает docker-proxy на 0.0.0.0:8090 и [::]:8090. Для конвергенции всё готово: APP_PORT=8090 в /opt/usage-board/.env, nginx upstream 127.0.0.1:8090, деплой-таймер каждые 5 мин гоняет 'compose up -d --no-deps app' (docker compose пересоздаёт контейнер при смене конфига). Ops-шаг после мержа: положить PR-версию compose.app-only.yml в /opt/usage-board -> в течение <=5 мин docker ps покажет 127.0.0.1:8090->3210. Деплой не запускал.",
+      "paths": []
+    },
+    {
+      "id": "2",
+      "type": "test",
+      "result": "pass",
+      "checked_with": "python3 probe_ext.py с chuwi (сокет-пробы 89.127.199.57:8090, 100.87.117.111:8090, usage.ohera.ru:8443 и :443); ssh fornex-usa 'nginx -T' (vhost usage.ohera.ru); cross-host пробы probe_connect.py с fornex-usa на chuwi:18090 и chuwi:8090",
+      "proof": "Фронт не пострадал и не задет: https://usage.ohera.ru:8443/ -> HTTP/1.1 401 Unauthorized (nginx/1.24.0) — как требуется; vhost usage.ohera.ru имеет proxy_pass http://127.0.0.1:8090, т.е. фронт ходит в loopback и смена публикации его не ломает; nginx/Caddy конфиги и Caddyfile в диффе не тронуты. Cross-host контроль механики негатива: fornex-usa -> chuwi:18090 (loopback-bind скатч-стека) = REFUSED in 0.17s; контроль fornex-usa -> chuwi:8090 (0.0.0.0-bind) = CONNECTED HTTP/1.1 200 (путь проб жив).",
+      "paths": []
+    },
+    {
+      "id": "2",
+      "type": "manual",
+      "result": "skip",
+      "checked_with": "python3 probe_ext.py с chuwi (внешние пробы, до изменения)",
+      "proof": "Негативная половина AC2 в буквальном виде (curl http://89.127.199.57:8090/ извне = refused/timeout, не 401) пока НЕ выполняется: порт доступен извне и отвечает 'HTTP/1.1 401 Unauthorized, server: uvicorn' — и по публичному IP 89.127.199.57:8090, и по tailnet 100.87.117.111:8090. Это до-изменённое состояние, которое PR закрывает; механика доказана пунктом id 2 type=test и скатч-стеком. Отложено до ops-шага, повтор той же командой.",
+      "paths": []
+    },
+    {
+      "id": "3",
+      "type": "test",
+      "result": "pass",
+      "checked_with": "deploy/check-pull-policy.sh на head; /opt/hermes/verify-workspace/uba-venv/bin/python -m pytest tests/test_deploy_config.py -q; git diff origin/main...HEAD по deploy/ и .github/",
+      "proof": "Деплой-гейт из TASK-usage-board-autodeploy-repull цел: deploy/check-pull-policy.sh -> 'OK: compose.app-only.yml services.app.pull_policy=always', rc=0; test_check_pull_policy_script_enforces_app_repull зелёный; PR не изменяет ни deploy/*, ни .github/workflows — смена публикации порта гейт не задела.",
+      "paths": []
+    },
+    {
+      "id": "3",
+      "type": "ci",
+      "result": "pass",
+      "checked_with": "gh api repos/Rast53/usage-board/commits/8d0eb5a2b53a7c3428a29ed67d37578fd51828e3/check-runs; gh run view 35190279395 --log",
+      "proof": "На head SHA все чеки зелёные: compose-check completed/success, test completed/success, build completed/success, GitGuardian Security Checks completed/success. В логе job test: '48 passed, 4 warnings in 0.77s'; job compose-check: 'compose config OK'. Combined commit status пуст (statuses: []) — 'pending' без контекстов, красных чеков нет.",
+      "paths": []
+    }
+  ]
+}
