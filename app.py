@@ -110,6 +110,13 @@ PACE_WINDOW_SPECS: tuple[tuple[str, str, int | None], ...] = (
     ("weekly", "weekly", PACE_WEEKLY_MINUTES),
     ("monthly", "monthly", None),
 )
+# Cursor publishes no 5h/weekly windows: one billing cycle carries two meters
+# (Cursor-model % and other-model %) that burn down over the same reset. They are
+# exposed as two labelled "monthly" pace lanes so the panel shows both meters.
+PACE_CURSOR_WINDOW_SPECS: tuple[tuple[str, str], ...] = (
+    ("cursor_models", "Cursor-модели"),
+    ("other_models", "другие модели"),
+)
 # Published weekly request quotas (Kimi Code membership docs 2026-08-25). 5h cap is 200 for all tiers.
 KIMI_WEEKLY_PLANS: dict[float, str] = {
     1024.0: "Andante",
@@ -4389,6 +4396,26 @@ def compute_pace_lane(
     }
 
 
+def _cursor_pace_window(acc: dict[str, Any], cache_key: str) -> dict[str, Any] | None:
+    """Normalize one Cursor meter to a pace window.
+
+    Live ``quota_cache`` entries hold a window dict per meter (``used_percent``
+    + ``next_reset_at``); a hand-built cache may instead store a bare percent
+    with one account-level reset. Both shapes must yield the same two lanes.
+    """
+    raw = acc.get(cache_key)
+    if isinstance(raw, dict):
+        window = dict(raw)
+    else:
+        used_percent = _as_float(raw)
+        if used_percent is None:
+            return None
+        window = {"used_percent": used_percent}
+    if not window.get("next_reset_at"):
+        window["next_reset_at"] = acc.get("next_reset_at") or acc.get("billing_cycle_end")
+    return window
+
+
 def build_pace_payload(
     quota_cache: dict[str, Any] | None,
     now: datetime | None = None,
@@ -4416,26 +4443,50 @@ def build_pace_payload(
             continue
         probed_at = acc.get("probed_at")
         lanes: list[dict[str, Any]] = []
-        for cache_key, window_label, minutes in PACE_WINDOW_SPECS:
-            window_data = acc.get(cache_key)
-            resolved_minutes = minutes
-            if resolved_minutes is None:
-                if not isinstance(window_data, dict):
+        if str(key) in ("cursor", "cursor-main"):
+            # Both Cursor meters share one billing cycle, so they are emitted as
+            # two labelled lanes in the "monthly" column instead of the generic
+            # session/weekly/monthly sweep.
+            for cache_key, label in PACE_CURSOR_WINDOW_SPECS:
+                window_data = _cursor_pace_window(acc, cache_key)
+                if window_data is None:
                     continue
                 resolved_minutes = compute_monthly_window_minutes(
                     window_data.get("next_reset_at")
                 )
                 if resolved_minutes is None:
                     continue
-            lane = compute_pace_lane(
-                window_label,
-                resolved_minutes,
-                window_data,
-                now_dt,
-                probed_at,
-            )
-            if lane is not None:
-                lanes.append(lane)
+                lane = compute_pace_lane(
+                    "monthly",
+                    resolved_minutes,
+                    window_data,
+                    now_dt,
+                    probed_at,
+                )
+                if lane is not None:
+                    lane["label"] = label
+                    lanes.append(lane)
+        else:
+            for cache_key, window_label, minutes in PACE_WINDOW_SPECS:
+                window_data = acc.get(cache_key)
+                resolved_minutes = minutes
+                if resolved_minutes is None:
+                    if not isinstance(window_data, dict):
+                        continue
+                    resolved_minutes = compute_monthly_window_minutes(
+                        window_data.get("next_reset_at")
+                    )
+                    if resolved_minutes is None:
+                        continue
+                lane = compute_pace_lane(
+                    window_label,
+                    resolved_minutes,
+                    window_data,
+                    now_dt,
+                    probed_at,
+                )
+                if lane is not None:
+                    lanes.append(lane)
         if lanes:
             accounts_out.append({"provider": str(key), "lanes": lanes})
         else:
