@@ -7,6 +7,8 @@ Daily spend history is now exposed by a read-only endpoint on
 `spend.jsonl` series, returns per-provider calendar-day points, and reports
 missing data as an explicit `gap` instead of inventing zeroes. No deploy.
 
+PR: https://github.com/Rast53/usage-board/pull/9
+
 Sources used: `AGENTMAP.md` is absent at the repo root; `.gbrain-source` is also
 absent, so there was no gbrain source id for `code_def` / `code_callers`.
 Orientation came from `app.py` (existing `_spend_path`,
