@@ -1,0 +1,45 @@
+{
+  "verdict": "PASS",
+  "sha": "e51ab0399da09c7e3c112c9cb2e2ae6e2887b399",
+  "reasons": [
+    "verify-tests (pytest) passed: 77 passed, exit 0; all six named spend-daily tests are present in tests/test_spend_daily_api.py and ran green in the suite run.",
+    "AC2 test_spend_daily_delta: two points for opencode-go, second point spent == 1.5 delta of used_usd, first spent is None.",
+    "AC3 test_spend_daily_first_point_partial: first window point has partial=true and spent=None (no invented spend).",
+    "AC4 test_spend_daily_gaps_are_explicit: cursor gap=no-history, zai gap=no-metric, points empty, measured is not true.",
+    "AC5 test_spend_daily_survives_broken_line: malformed jsonl line keeps endpoint at 200 and increments skipped_lines to 1.",
+    "AC6 test_spend_daily_days_validation: days in {0,91,-1,abc,1.5} all return 400 with 'days' in detail.",
+    "AC7 test_spend_daily_full_window: 14-point window gives exactly 13 deltas of 1.0 for opencode-go and empty points with gap for cursor/zai.",
+    "Environment note: /opt/verify-venv lacked fastapi; pip could not write into the venv, so fastapi was installed to a workspace target dir and exposed via PYTHONPATH for the single verify-tests run — no new venv created."
+  ],
+  "model": "glm-5.3",
+  "gate_version": {
+    "schema": 1,
+    "code_sha": "unknown",
+    "profile": "verifier-glm",
+    "model": "glm-5.3",
+    "verify_path": "dsh",
+    "chain": [
+      "primary:dsh"
+    ]
+  },
+  "build_model": "deepseek-v4.1-flash",
+  "verify_model": "glm-5.3",
+  "build_family": "deepseek",
+  "verify_family": "zai",
+  "tokens_in": 6728,
+  "tokens_out": 2880,
+  "cache_read": 83072,
+  "cost_usd": 0.002986,
+  "peak": false,
+  "usage_source": "session_v4",
+  "usage": {
+    "model": "glm-5.3",
+    "tokens_in": 6728,
+    "tokens_out": 2880,
+    "cache_read": 83072,
+    "cost_usd": 0.002986,
+    "peak": false,
+    "usage_source": "session_v4",
+    "usage_missing": false
+  }
+}
