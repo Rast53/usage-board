@@ -1,0 +1,42 @@
+{
+  "verdict": "PASS",
+  "sha": "983387e15d15381f749e435c287931a3465947f6",
+  "reasons": [
+    "Локальный прогон pytest невозможен: /opt/verify-venv/bin/verify-tests завершился ошибкой коллекции — в venv отсутствует fastapi (ModuleNotFoundError: No module named 'fastapi'), своё окружение создавать запрещено; по контракту это type=test result=skip (окружение недоступно), блокировки слияния нет",
+    "CI на head SHA 983387e зелёный: проверки test, build, compose-check, GitGuardian Security Checks — все success (GitHub API check-runs)",
+    "Чек ui-gate на head SHA отсутствует в списке check-runs — записан как type=ci result=skip, не блокирует",
+    "Требуемые приёмкой тесты присутствуют в tests/test_spend_daily_api.py на head SHA: test_spend_daily_deepseek_currency (assert unit == 'CNY'), test_spend_daily_opencode_currency (assert unit == 'USD'), test_spend_daily_multi_currency_picks_moving, test_spend_daily_zai_unchanged (unit '%', measured False, gap 'no-metric') — подтверждено статически (diff/grep)",
+    "Ни одного result=fail: слияние не блокируется; критерии 2–5 не подтверждены машиной локально из-за недоступности окружения"
+  ],
+  "model": "glm-5.3",
+  "gate_version": {
+    "schema": 1,
+    "code_sha": "unknown",
+    "profile": "verifier-glm",
+    "model": "glm-5.3",
+    "verify_path": "dsh",
+    "chain": [
+      "primary:dsh"
+    ]
+  },
+  "build_model": "deepseek-v4.1-flash",
+  "verify_model": "glm-5.3",
+  "build_family": "deepseek",
+  "verify_family": "zai",
+  "tokens_in": 8447,
+  "tokens_out": 2461,
+  "cache_read": 42880,
+  "cost_usd": 0.002872,
+  "peak": false,
+  "usage_source": "session_v4",
+  "usage": {
+    "model": "glm-5.3",
+    "tokens_in": 8447,
+    "tokens_out": 2461,
+    "cache_read": 42880,
+    "cost_usd": 0.002872,
+    "peak": false,
+    "usage_source": "session_v4",
+    "usage_missing": false
+  }
+}
