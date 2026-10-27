@@ -1,0 +1,84 @@
+{
+  "schema": "evidence.v1",
+  "sha": "983387e15d15381f749e435c287931a3465947f6",
+  "items": [
+    {
+      "id": "1",
+      "type": "test",
+      "result": "skip",
+      "checked_with": "/opt/verify-venv/bin/verify-tests --repo <clone>",
+      "proof": "Прогон невозможен: окружение недоступно — 5 ошибок коллекции, ModuleNotFoundError: No module named 'fastapi' в verify-venv; своё venv создавать запрещено. Косвенное подтверждение: CI-проверка 'test' (GitHub Actions run 40575971542, job 122442383646) на head SHA 983387e — conclusion success",
+      "paths": [
+        "tests/"
+      ]
+    },
+    {
+      "id": "1",
+      "type": "ci",
+      "result": "pass",
+      "checked_with": "test",
+      "proof": "GitHub check-runs для SHA 983387e15d15381f749e435c287931a3465947f6: check 'test' completed/conclusion=success (run 40575971542)",
+      "paths": [
+        "tests/test_spend_daily_api.py"
+      ]
+    },
+    {
+      "id": "2",
+      "type": "test",
+      "result": "skip",
+      "checked_with": "pytest tests/test_spend_daily_api.py::test_spend_daily_deepseek_currency",
+      "proof": "Окружение недоступно (нет fastapi в verify-venv). Статически: тест присутствует (строка 171), ассерт deepseek['unit'] == 'CNY', measured is True на фикстуре с балансом DeepSeek в CNY",
+      "paths": [
+        "tests/test_spend_daily_api.py"
+      ]
+    },
+    {
+      "id": "3",
+      "type": "test",
+      "result": "skip",
+      "checked_with": "pytest tests/test_spend_daily_api.py::test_spend_daily_opencode_currency",
+      "proof": "Окружение недоступно (нет fastapi в verify-venv). Статически: тест присутствует (строка 188), ассерт opencode['unit'] == 'USD'",
+      "paths": [
+        "tests/test_spend_daily_api.py"
+      ]
+    },
+    {
+      "id": "4",
+      "type": "test",
+      "result": "skip",
+      "checked_with": "pytest tests/test_spend_daily_api.py::test_spend_daily_multi_currency_picks_moving",
+      "proof": "Окружение недоступно (нет fastapi в verify-venv). Статически: тест присутствует (строка 206), снапшот с {'CNY': 100.0, 'USD': 10.0} → {'CNY': 100.0, 'USD': 8.0}, ассерт deepseek['unit'] == 'USD' (движущаяся валюта)",
+      "paths": [
+        "tests/test_spend_daily_api.py"
+      ]
+    },
+    {
+      "id": "5",
+      "type": "test",
+      "result": "skip",
+      "checked_with": "pytest tests/test_spend_daily_api.py::test_spend_daily_zai_unchanged",
+      "proof": "Окружение недоступно (нет fastapi в verify-venv). Статически: тест присутствует (строка 225), ожидания unit '%', measured False, gap 'no-metric'",
+      "paths": [
+        "tests/test_spend_daily_api.py"
+      ]
+    },
+    {
+      "id": "diff",
+      "type": "diff",
+      "result": "pass",
+      "checked_with": "grep/чтение tests/test_spend_daily_api.py на head SHA",
+      "proof": "Заявленный файл tests/test_spend_daily_api.py существует в worktree на коммите 983387e15d15381f749e435c287931a3465947f6 и содержит все четыре требуемых приёмкой тест-функции",
+      "paths": [
+        "tests/test_spend_daily_api.py"
+      ]
+    },
+    {
+      "id": "ui-gate",
+      "type": "ci",
+      "result": "skip",
+      "checked_with": "ui-gate",
+      "proof": "Чек ui-gate отсутствует в check-runs GitHub API для head SHA (всего 4 чека: GitGuardian, compose-check, build, test). Локальный браузер в окружении отсутствует, запуск Playwright запрещён",
+      "paths": []
+    }
+  ]
+}
