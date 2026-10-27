@@ -2684,6 +2684,7 @@ SPEND_DAILY_MAX_DAYS = 90
 
 
 def _extract_deepseek_daily_spent(obj: dict[str, Any]) -> float | None:
+    """DeepSeek scalar, preferring CNY when both balances are reported."""
     _ts_raw, balance = _extract_deepseek_balance_from_snapshot(obj)
     if balance is None:
         return None
@@ -2691,13 +2692,81 @@ def _extract_deepseek_daily_spent(obj: dict[str, Any]) -> float | None:
     return value
 
 
-# provider id -> (unit, direction, scalar extractor from a spend.jsonl row).
+def _deepseek_daily_balances(obj: dict[str, Any]) -> dict[str, float] | None:
+    """Currency -> total balance for a DeepSeek row, or None when absent."""
+    _ts_raw, balance = _extract_deepseek_balance_from_snapshot(obj)
+    if balance is None:
+        return None
+    totals = _balance_totals(balance)
+    return totals or None
+
+
+def _deepseek_spend_daily_metric(
+    rows: list[dict[str, Any]],
+    *,
+    days: int,
+    today: Any,
+) -> tuple[str, list[dict[str, Any]]]:
+    """Build DeepSeek points in the currency that actually moved.
+
+    DeepSeek may report CNY and USD balances at once. Summing them or always
+    preferring CNY mislabels USD spend, so use the currency with the largest
+    absolute movement across the observed rows. A static multi-currency
+    snapshot keeps CNY when present (DeepSeek's primary balance).
+    """
+    observations: list[tuple[float, dict[str, float]]] = []
+    for obj in rows:
+        parsed = parse_snapshot_ts(obj.get("ts"))
+        if parsed is None:
+            continue
+        totals = _deepseek_daily_balances(obj)
+        if totals:
+            observations.append((parsed[0], totals))
+    observations.sort(key=lambda item: item[0])
+
+    currencies: list[str] = []
+    for _epoch, totals in observations:
+        for code in totals:
+            if code not in currencies:
+                currencies.append(code)
+    if not currencies:
+        return "CNY", []
+
+    movement = {code: 0.0 for code in currencies}
+    for (_prev_epoch, prev), (_cur_epoch, cur) in zip(observations, observations[1:]):
+        for code in currencies:
+            if code in prev and code in cur:
+                movement[code] += abs(cur[code] - prev[code])
+    changed = [code for code in currencies if movement[code] > 1e-9]
+    if changed:
+        unit = max(changed, key=lambda code: movement[code])
+    else:
+        # No movement yet: keep the provider's usual primary currency.
+        unit = "CNY" if "CNY" in currencies else currencies[0]
+
+    def extract(obj: dict[str, Any]) -> float | None:
+        totals = _deepseek_daily_balances(obj)
+        return totals.get(unit) if totals else None
+
+    points = _spend_daily_points(
+        rows,
+        direction="decrease",
+        extract=extract,
+        days=days,
+        today=today,
+    )
+    return unit, points
+
+
+# provider id -> (default unit, direction, scalar extractor from a spend.jsonl row).
+# DeepSeek's unit is resolved per series in _deepseek_spend_daily_metric because
+# its snapshot can carry both CNY and USD balances.
 _SPEND_DAILY_METRICS: dict[str, tuple[str, str, Any]] = {
-    "deepseek": ("$", "decrease", _extract_deepseek_daily_spent),
-    "openrouter": ("$", "increase", _extract_openrouter_usage_from_snapshot),
-    "commandcode": ("$", "decrease", _extract_commandcode_monthly_remaining),
+    "deepseek": ("CNY", "decrease", _extract_deepseek_daily_spent),
+    "openrouter": ("USD", "increase", _extract_openrouter_usage_from_snapshot),
+    "commandcode": ("USD", "decrease", _extract_commandcode_monthly_remaining),
     "kimi": ("req", "increase", _extract_kimi_weekly_used),
-    "opencode-go": ("$", "increase", _extract_opencode_monthly_used),
+    "opencode-go": ("USD", "increase", _extract_opencode_monthly_used),
 }
 # Providers deliberately reported as gaps (not invented zeroes). Z.AI exposes a
 # quota counter rather than a spend metric; Cursor has no history in spend.jsonl.
@@ -2824,13 +2893,20 @@ def build_spend_daily_payload(
             }
             continue
         unit, direction, extract = metric
-        points = _spend_daily_points(
-            rows,
-            direction=direction,
-            extract=extract,
-            days=days,
-            today=today,
-        )
+        if name == "deepseek":
+            unit, points = _deepseek_spend_daily_metric(
+                rows,
+                days=days,
+                today=today,
+            )
+        else:
+            points = _spend_daily_points(
+                rows,
+                direction=direction,
+                extract=extract,
+                days=days,
+                today=today,
+            )
         entry: dict[str, Any] = {
             "unit": unit,
             "measured": bool(points),

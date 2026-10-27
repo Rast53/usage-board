@@ -180,7 +180,7 @@ and a provider without a usable metric comes back with a `gap` and empty
   "generated_at": "2026-10-27T12:00:00Z",
   "providers": {
     "opencode-go": {
-      "unit": "$", "measured": true,
+      "unit": "USD", "measured": true,
       "points": [{"date": "2026-10-14", "spent": 1.2}]
     },
     "cursor": {"unit": "%", "measured": false, "gap": "no-history", "points": []},
@@ -189,6 +189,13 @@ and a provider without a usable metric comes back with a `gap` and empty
   "skipped_lines": 0
 }
 ```
+
+`unit` is the currency/metric of the provider's own series: `USD` for
+OpenRouter, Command Code and OpenCode Go, `req` for Kimi, `%` for Cursor/Z.AI.
+DeepSeek reports `CNY` or `USD` depending on which balance actually moved; when
+a snapshot carries both currencies, only the moving one is used (never summed).
+Provider entries without history stay explicit gaps (`no-history` /
+`no-metric`) instead of being filled with zeroes.
 
 `days` outside `1..90` (or a non-integer) is an explicit `400`. Malformed
 lines in `spend.jsonl` are skipped and counted in `skipped_lines`; they never

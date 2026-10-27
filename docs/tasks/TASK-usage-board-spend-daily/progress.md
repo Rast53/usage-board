@@ -50,3 +50,40 @@ existing tests under `tests/`.
 | 5 | broken JSONL line does not fail route, lands in skip counter | `test_spend_daily_survives_broken_line` |
 | 6 | `days` outside 1..90 → `400` with explicit error | `test_spend_daily_days_validation` |
 | 7 | full window → 13 deltas, no invented gap-provider points | `test_spend_daily_full_window` |
+
+## Follow-up: provider units (branch `dsh/TASK-spend-daily-units`)
+
+DeepSeek balances are denominated in CNY, but `/api/spend-daily` labelled every
+money metric `$`. Fixed by deriving `unit` from the provider's own metric and
+resolving DeepSeek per series instead of always preferring CNY.
+
+Sources used: `AGENTMAP.md` and `.gbrain-source` are still absent at the repo
+root, so there was no pointer/source id for `code_def` / `code_callers`.
+Orientation came from `app.py` (`_SPEND_DAILY_METRICS`,
+`_deepseek_series_scalar`, `_balance_totals`, `_spend_daily_points`) and
+`tests/test_spend_daily_api.py`.
+
+### Done
+
+- `app.py`: `unit` is now `USD` for OpenRouter, Command Code and OpenCode Go,
+  `req` for Kimi, `%` for Cursor/Z.AI, and `CNY`/`USD` for DeepSeek.
+- DeepSeek daily points are built per currency: when a snapshot carries both
+  CNY and USD, the series uses the currency that actually moved (largest
+  absolute balance change) and never sums the two. No DeepSeek history keeps
+  the explicit `no-history` gap; `zai` stays `%` / `no-metric`.
+- `tests/test_spend_daily_api.py`: added the four acceptance tests for DeepSeek
+  CNY, OpenCode Go USD, multi-currency selection, and unchanged Z.AI.
+- `README.md`: updated the spend-daily unit documentation.
+
+### Acceptance self-check (agent)
+
+| # | Check | Result |
+|---|--------|--------|
+| 1 | `/tmp/usage-board-venv/bin/python -m pytest tests/ -q` | `81 passed` |
+| 2 | DeepSeek CNY fixture → `deepseek.unit == "CNY"` | `test_spend_daily_deepseek_currency` |
+| 3 | Same route → `opencode-go.unit == "USD"` | `test_spend_daily_opencode_currency` |
+| 4 | Both currencies in snapshot → points/unit follow the moving one | `test_spend_daily_multi_currency_picks_moving` |
+| 5 | `zai` remains `%`, `measured: false`, `gap: no-metric` | `test_spend_daily_zai_unchanged` |
+
+PR: https://github.com/Rast53/usage-board/pull/10
+
