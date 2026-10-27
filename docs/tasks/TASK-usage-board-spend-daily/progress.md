@@ -85,5 +85,5 @@ Orientation came from `app.py` (`_SPEND_DAILY_METRICS`,
 | 4 | Both currencies in snapshot → points/unit follow the moving one | `test_spend_daily_multi_currency_picks_moving` |
 | 5 | `zai` remains `%`, `measured: false`, `gap: no-metric` | `test_spend_daily_zai_unchanged` |
 
-PR: pending branch push.
+PR: https://github.com/Rast53/usage-board/pull/10
 
