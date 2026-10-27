@@ -1,0 +1,76 @@
+{
+  "schema": "evidence.v1",
+  "sha": "e51ab0399da09c7e3c112c9cb2e2ae6e2887b399",
+  "items": [
+    {
+      "id": "1",
+      "type": "test",
+      "result": "pass",
+      "checked_with": "/opt/verify-venv/bin/verify-tests --repo <clone> (PYTHONPATH=_verify_deps for fastapi)",
+      "proof": "77 passed in 0.63s, exit 0 (full tests/ suite)",
+      "paths": [
+        "tests/test_spend_daily_api.py"
+      ]
+    },
+    {
+      "id": "2",
+      "type": "test",
+      "result": "pass",
+      "checked_with": "pytest tests/test_spend_daily_api.py::test_spend_daily_delta via verify-tests suite run",
+      "proof": "points == [yesterday, today]; points[1].spent == approx(1.5); points[0].spent is None",
+      "paths": [
+        "tests/test_spend_daily_api.py"
+      ]
+    },
+    {
+      "id": "3",
+      "type": "test",
+      "result": "pass",
+      "checked_with": "pytest tests/test_spend_daily_api.py::test_spend_daily_first_point_partial via verify-tests suite run",
+      "proof": "first point partial is True and spent is None",
+      "paths": [
+        "tests/test_spend_daily_api.py"
+      ]
+    },
+    {
+      "id": "4",
+      "type": "test",
+      "result": "pass",
+      "checked_with": "pytest tests/test_spend_daily_api.py::test_spend_daily_gaps_are_explicit via verify-tests suite run",
+      "proof": "cursor gap=no-history, zai gap=no-metric, points == [], measured is not True",
+      "paths": [
+        "tests/test_spend_daily_api.py"
+      ]
+    },
+    {
+      "id": "5",
+      "type": "test",
+      "result": "pass",
+      "checked_with": "pytest tests/test_spend_daily_api.py::test_spend_daily_survives_broken_line via verify-tests suite run",
+      "proof": "broken line -> 200, skipped_lines == 1, last delta still computed (approx 1.0)",
+      "paths": [
+        "tests/test_spend_daily_api.py"
+      ]
+    },
+    {
+      "id": "6",
+      "type": "test",
+      "result": "pass",
+      "checked_with": "pytest tests/test_spend_daily_api.py::test_spend_daily_days_validation via verify-tests suite run",
+      "proof": "parametrized days 0/91/-1/abc/1.5 all -> 400 with 'days' in detail (5 param cases passed)",
+      "paths": [
+        "tests/test_spend_daily_api.py"
+      ]
+    },
+    {
+      "id": "7",
+      "type": "test",
+      "result": "pass",
+      "checked_with": "pytest tests/test_spend_daily_api.py::test_spend_daily_full_window via verify-tests suite run",
+      "proof": "14 points, exactly 13 deltas each approx(1.0), first partial, cursor/zai points empty with gap set",
+      "paths": [
+        "tests/test_spend_daily_api.py"
+      ]
+    }
+  ]
+}
