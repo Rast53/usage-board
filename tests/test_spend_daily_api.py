@@ -37,6 +37,20 @@ def _day_ts(day, hour: int = 12) -> str:
     return f"{day.isoformat()}T{hour:02d}:00:00Z"
 
 
+def _deepseek_row(ts: str, balances: dict[str, float]) -> dict:
+    return {
+        "ts": ts,
+        "wallets": {
+            "deepseek": {
+                "balance": [
+                    {"currency": code, "total_balance": str(value)}
+                    for code, value in balances.items()
+                ]
+            }
+        },
+    }
+
+
 def _client() -> TestClient:
     return TestClient(app_module.app)
 
@@ -152,3 +166,74 @@ def test_spend_daily_full_window(monkeypatch, tmp_path) -> None:
         provider = body["providers"][name]
         assert provider["points"] == []
         assert provider["gap"]
+
+
+def test_spend_daily_deepseek_currency(monkeypatch, tmp_path) -> None:
+    today = datetime.now(timezone.utc).date()
+    _write_spend(
+        monkeypatch,
+        tmp_path,
+        [
+            _deepseek_row(_day_ts(today - timedelta(days=1)), {"CNY": 100.0}),
+            _deepseek_row(_day_ts(today), {"CNY": 90.0}),
+        ],
+    )
+
+    deepseek = _client().get("/api/spend-daily?days=30").json()["providers"]["deepseek"]
+    assert deepseek["unit"] == "CNY"
+    assert deepseek["measured"] is True
+    assert deepseek["points"][-1]["spent"] == pytest.approx(10.0)
+
+
+def test_spend_daily_opencode_currency(monkeypatch, tmp_path) -> None:
+    today = datetime.now(timezone.utc).date()
+    _write_spend(
+        monkeypatch,
+        tmp_path,
+        [
+            _row(_day_ts(today - timedelta(days=1)), 1.0),
+            _row(_day_ts(today), 2.5),
+        ],
+    )
+
+    opencode = _client().get("/api/spend-daily?days=30").json()["providers"][
+        "opencode-go"
+    ]
+    assert opencode["unit"] == "USD"
+    assert opencode["points"][-1]["spent"] == pytest.approx(1.5)
+
+
+def test_spend_daily_multi_currency_picks_moving(monkeypatch, tmp_path) -> None:
+    today = datetime.now(timezone.utc).date()
+    _write_spend(
+        monkeypatch,
+        tmp_path,
+        [
+            _deepseek_row(
+                _day_ts(today - timedelta(days=1)),
+                {"CNY": 100.0, "USD": 10.0},
+            ),
+            _deepseek_row(_day_ts(today), {"CNY": 100.0, "USD": 8.0}),
+        ],
+    )
+
+    deepseek = _client().get("/api/spend-daily?days=30").json()["providers"]["deepseek"]
+    assert deepseek["unit"] == "USD"
+    assert deepseek["points"][-1]["spent"] == pytest.approx(2.0)
+
+
+def test_spend_daily_zai_unchanged(monkeypatch, tmp_path) -> None:
+    today = datetime.now(timezone.utc).date()
+    _write_spend(
+        monkeypatch,
+        tmp_path,
+        [_row(_day_ts(today - timedelta(days=1)), 1.0)],
+    )
+
+    zai = _client().get("/api/spend-daily?days=30").json()["providers"]["zai"]
+    assert zai == {
+        "unit": "%",
+        "measured": False,
+        "gap": "no-metric",
+        "points": [],
+    }
