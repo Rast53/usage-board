@@ -2674,6 +2674,183 @@ def compute_opencode_go_spend(
     )
 
 
+# --- Daily spend API (/api/spend-daily) ------------------------------------
+# Daily series are derived from the compact spend.jsonl history only. A provider
+# without a usable numeric metric is reported with an explicit gap instead of a
+# synthetic zero, so "no data" and "zero spend" stay distinguishable.
+SPEND_DAILY_SCHEMA_VERSION = "spend-daily.v1"
+SPEND_DAILY_DEFAULT_DAYS = 30
+SPEND_DAILY_MAX_DAYS = 90
+
+
+def _extract_deepseek_daily_spent(obj: dict[str, Any]) -> float | None:
+    _ts_raw, balance = _extract_deepseek_balance_from_snapshot(obj)
+    if balance is None:
+        return None
+    value, _unit = _deepseek_series_scalar(balance)
+    return value
+
+
+# provider id -> (unit, direction, scalar extractor from a spend.jsonl row).
+_SPEND_DAILY_METRICS: dict[str, tuple[str, str, Any]] = {
+    "deepseek": ("$", "decrease", _extract_deepseek_daily_spent),
+    "openrouter": ("$", "increase", _extract_openrouter_usage_from_snapshot),
+    "commandcode": ("$", "decrease", _extract_commandcode_monthly_remaining),
+    "kimi": ("req", "increase", _extract_kimi_weekly_used),
+    "opencode-go": ("$", "increase", _extract_opencode_monthly_used),
+}
+# Providers deliberately reported as gaps (not invented zeroes). Z.AI exposes a
+# quota counter rather than a spend metric; Cursor has no history in spend.jsonl.
+_SPEND_DAILY_GAPS: dict[str, tuple[str, str]] = {
+    "zai": ("%", "no-metric"),
+    "cursor": ("%", "no-history"),
+}
+
+
+def _read_spend_daily_rows() -> tuple[list[dict[str, Any]], int]:
+    """Read spend.jsonl read-only, skipping broken lines and counting them."""
+    path = _spend_path()
+    rows: list[dict[str, Any]] = []
+    skipped = 0
+    try:
+        with path.open("r", encoding="utf-8", errors="ignore") as fh:
+            for line in fh:
+                raw = line.strip()
+                if not raw:
+                    continue
+                try:
+                    obj = json.loads(raw)
+                except Exception:
+                    skipped += 1
+                    continue
+                if isinstance(obj, dict):
+                    if parse_snapshot_ts(obj.get("ts")) is None:
+                        skipped += 1
+                        continue
+                    rows.append(obj)
+                else:
+                    skipped += 1
+    except OSError:
+        return [], skipped
+    return rows, skipped
+
+
+def _spend_daily_points(
+    rows: list[dict[str, Any]],
+    *,
+    direction: str,
+    extract,
+    days: int,
+    today: Any,
+) -> list[dict[str, Any]]:
+    observations: list[tuple[float, float]] = []
+    for obj in rows:
+        parsed = parse_snapshot_ts(obj.get("ts"))
+        if parsed is None:
+            continue
+        value = _as_float(extract(obj))
+        if value is None:
+            continue
+        observations.append((parsed[0], value))
+    observations.sort(key=lambda item: item[0])
+
+    start_day = today - timedelta(days=days - 1)
+    by_day: dict[Any, list[tuple[float, float]]] = {}
+    for epoch, value in observations:
+        day = datetime.fromtimestamp(epoch, timezone.utc).date()
+        if start_day <= day <= today:
+            by_day.setdefault(day, []).append((epoch, value))
+
+    points: list[dict[str, Any]] = []
+    ordered_days = sorted(by_day)
+    for index, day in enumerate(ordered_days):
+        day_values = by_day[day]
+        end_value = day_values[-1][1]
+        row: dict[str, Any] = {"date": day.isoformat(), "spent": None, "partial": True}
+        if index == 0:
+            # First observed day in the window has no in-window predecessor.
+            points.append(row)
+            continue
+        day_start = datetime(
+            day.year, day.month, day.day, tzinfo=timezone.utc
+        ).timestamp()
+        baseline: float | None = None
+        for epoch, value in observations:
+            if epoch < day_start:
+                baseline = value
+            else:
+                break
+        if baseline is None:
+            row["gap"] = "no-history"
+            points.append(row)
+            continue
+        if direction == "increase":
+            spent = round(float(end_value) - float(baseline), 6)
+        else:
+            spent = round(float(baseline) - float(end_value), 6)
+        if spent < 0:
+            row["gap"] = "window-reset"
+            points.append(row)
+            continue
+        row.update({"spent": spent, "partial": False})
+        points.append(row)
+    return points
+
+
+def build_spend_daily_payload(
+    days: int = SPEND_DAILY_DEFAULT_DAYS,
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Build the read-only daily spend envelope from spend.jsonl."""
+    if days < 1 or days > SPEND_DAILY_MAX_DAYS:
+        raise ValueError(
+            f"days must be between 1 and {SPEND_DAILY_MAX_DAYS}"
+        )
+    now_dt = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    today = now_dt.date()
+    rows, skipped = _read_spend_daily_rows()
+
+    providers: dict[str, Any] = {}
+    for name in get_enabled_providers():
+        metric = _SPEND_DAILY_METRICS.get(name)
+        if metric is None:
+            unit, gap = _SPEND_DAILY_GAPS.get(name, ("%", "no-metric"))
+            providers[name] = {
+                "unit": unit,
+                "measured": False,
+                "gap": gap,
+                "points": [],
+            }
+            continue
+        unit, direction, extract = metric
+        points = _spend_daily_points(
+            rows,
+            direction=direction,
+            extract=extract,
+            days=days,
+            today=today,
+        )
+        entry: dict[str, Any] = {
+            "unit": unit,
+            "measured": bool(points),
+            "points": points,
+        }
+        if not points:
+            entry["gap"] = "no-history"
+        providers[name] = entry
+
+    return {
+        "schema_version": SPEND_DAILY_SCHEMA_VERSION,
+        "days": days,
+        "generated_at": now_iso(),
+        "providers": providers,
+        "skipped_lines": skipped,
+        "skipped": skipped,
+        "broken_lines": skipped,
+    }
+
+
 def _pick(data: dict[str, Any] | None, *names: str) -> Any:
     if not isinstance(data, dict):
         return None
@@ -4918,6 +5095,28 @@ def pace() -> dict[str, Any]:
         key for key in (payload.get("no_window") or []) if str(key) in keep
     ]
     return payload
+
+
+@app.get("/api/spend-daily")
+def spend_daily(days: str = str(SPEND_DAILY_DEFAULT_DAYS)) -> dict[str, Any]:
+    """Daily spend by provider from local spend.jsonl (read-only, no network).
+
+    ``days`` defaults to 30 and must be an integer in 1..90; anything else is an
+    explicit 400 rather than a silently clamped window.
+    """
+    try:
+        requested = int(str(days), 10)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=400,
+            detail=f"days must be an integer between 1 and {SPEND_DAILY_MAX_DAYS}",
+        )
+    if requested < 1 or requested > SPEND_DAILY_MAX_DAYS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"days must be between 1 and {SPEND_DAILY_MAX_DAYS}",
+        )
+    return build_spend_daily_payload(requested)
 
 
 @app.get("/api/limits")
