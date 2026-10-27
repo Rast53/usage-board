@@ -159,9 +159,40 @@ The repull contract is checked by `deploy/check-pull-policy.sh` and by
 - `GET /api/wallets` — all enabled providers
 - `GET /api/quota` — cached quota probes
 - `GET /api/pace` — quota pace vs calendar
+- `GET /api/spend-daily?days=N` — daily spend by provider from local
+  `spend.jsonl` history (default 30, max 90)
 - `POST /api/refresh` — force a refresh
 
 All routes are protected by basic auth when configured.
+
+### `/api/spend-daily` (daily spend series)
+
+Read-only calendar-day series derived only from the compact `spend.jsonl`
+history; it performs no network I/O and never invents a zero for missing data.
+The first observed day in the window is `partial` (no previous day to diff),
+and a provider without a usable metric comes back with a `gap` and empty
+`points`:
+
+```json
+{
+  "schema_version": "spend-daily.v1",
+  "days": 30,
+  "generated_at": "2026-10-27T12:00:00Z",
+  "providers": {
+    "opencode-go": {
+      "unit": "$", "measured": true,
+      "points": [{"date": "2026-10-14", "spent": 1.2}]
+    },
+    "cursor": {"unit": "%", "measured": false, "gap": "no-history", "points": []},
+    "zai": {"unit": "%", "measured": false, "gap": "no-metric", "points": []}
+  },
+  "skipped_lines": 0
+}
+```
+
+`days` outside `1..90` (or a non-integer) is an explicit `400`. Malformed
+lines in `spend.jsonl` are skipped and counted in `skipped_lines`; they never
+fail the route.
 
 ### `/api/limits` (agent API)
 
