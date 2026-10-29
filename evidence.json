@@ -1,0 +1,55 @@
+{
+  "schema": "evidence.v1",
+  "sha": "818214683f59f616670c5915d0a6499bf764a56e",
+  "items": [
+    {
+      "id": "1",
+      "type": "test",
+      "result": "skip",
+      "checked_with": "verify-tests --repo /tmp/dsh-verify/29a32093511b4cd8a1d8bc55b473e1e9/repo",
+      "proof": "Прогон не состоялся: Interrupted: 9 errors during collection, ModuleNotFoundError: No module named 'fastapi' — окружение недоступно; тесты tests/test_pace_api.py не выполнялись."
+    },
+    {
+      "id": "2",
+      "type": "test",
+      "result": "skip",
+      "checked_with": "verify-tests --repo /tmp/dsh-verify/29a32093511b4cd8a1d8bc55b473e1e9/repo",
+      "proof": "Сбор тестов прерван из-за отсутствия fastapi; test_pace_lane_labels_carry_provider не выполнялся (окружение недоступно)."
+    },
+    {
+      "id": "3",
+      "type": "manual",
+      "result": "pass",
+      "checked_with": "static review: app.py, static/index.html, tests/test_pace_colors.py",
+      "proof": "app.py:132 задаёт PACE_COLORS; tests/test_pace_colors.py проверяет set(PACE_COLORS) == set(KNOWN_PROVIDERS) и len == 7, а также совпадение цвета kimi 5h и monthly и разные оттенки pace_shade; grep по static/index.html не находит PACE_LANE_COLORS, PACE_COLORS и pace_shade."
+    },
+    {
+      "id": "4",
+      "type": "test",
+      "result": "skip",
+      "checked_with": "verify-tests --repo /tmp/dsh-verify/29a32093511b4cd8a1d8bc55b473e1e9/repo",
+      "proof": "Тест test_pace_unknown_reset_lane не выполнялся: прогон прерван на сборе из-за отсутствия fastapi (окружение недоступно)."
+    },
+    {
+      "id": "5",
+      "type": "manual",
+      "result": "pass",
+      "checked_with": "static review: static/index.html (renderKimiCard)",
+      "proof": "В renderKimiCard месячные метры meter('месяц (всего)')/meter('месяц (code)') находятся в теле карточки до details-body (строки ~884), а monthRow-строки остаются в деталях (~898)."
+    },
+    {
+      "id": "6",
+      "type": "manual",
+      "result": "pass",
+      "checked_with": "static review: docs/provider-windows-matrix.md, app.py KNOWN_PROVIDERS",
+      "proof": "Таблица матрицы содержит строки для всех семи слагов: deepseek, openrouter, zai, commandcode, kimi, opencode-go, cursor; tests/test_docs_matrix.py сверяет их список с app.KNOWN_PROVIDERS."
+    },
+    {
+      "id": "7",
+      "type": "test",
+      "result": "skip",
+      "checked_with": "verify-tests --repo /tmp/dsh-verify/29a32093511b4cd8a1d8bc55b473e1e9/repo",
+      "proof": "pytest -q не выполнен (сбор прерван: ModuleNotFoundError fastapi), поэтому зелёный прогон и неизменность ожиданий test_limits_api.py не подтверждены; progress.md с перечнем правок baseline в корне отсутствует."
+    }
+  ]
+}
