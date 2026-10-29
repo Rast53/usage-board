@@ -1,0 +1,41 @@
+{
+  "verdict": "FAIL",
+  "sha": "818214683f59f616670c5915d0a6499bf764a56e",
+  "reasons": [
+    "verify-tests запущен на клоне, но прогон прервался на сборе: `ModuleNotFoundError: No module named 'fastapi'` (9 errors during collection). Окружение верификатора недоступно, поэтому pytest -q (AC7) и машинные проверки AC1/2/4/5 не подтверждены.",
+    "Статическая проверка подтверждает: PACE_COLORS объявлен в app.py и тест сверяет его с KNOWN_PROVIDERS (7); в static/index.html отсутствуют PACE_LANE_COLORS/PACE_COLORS/pace_shade; месячные метры Kimi выводятся в теле карточки (meter('месяц (всего)')/meter('месяц (code)') до details-body); docs/provider-windows-matrix.md содержит все 7 слагов.",
+    "Не подтверждены машинно: точные resets[]-фикстуры AC1, подписи полос AC2, zai-полоса с pace \"n/a\" AC4, зелёный pytest и отсутствие правок ожиданий test_limits_api.py AC7. progress.md с перечнем правок baseline не найден в корне клона.",
+    "Наблюдение по окружению (отсутствие fastapi в /opt/verify-venv) не является гейтом мержа само по себе, но приёмка не подтверждена машиной, поэтому общий вердикт FAIL."
+  ],
+  "model": "deepseek-v4.1-flash",
+  "gate_version": {
+    "schema": 1,
+    "code_sha": "unknown",
+    "profile": "opencode-go",
+    "model": "deepseek-v4.1-flash",
+    "verify_path": "dsh",
+    "chain": [
+      "primary:dsh"
+    ]
+  },
+  "build_model": "grok-4.7",
+  "verify_model": "deepseek-v4.1-flash",
+  "build_family": "grok",
+  "verify_family": "deepseek",
+  "tokens_in": 17205,
+  "tokens_out": 9913,
+  "cache_read": 35200,
+  "cost_usd": 0.008634,
+  "peak": false,
+  "usage_source": "session_v4",
+  "usage": {
+    "model": "deepseek-v4.1-flash",
+    "tokens_in": 17205,
+    "tokens_out": 9913,
+    "cache_read": 35200,
+    "cost_usd": 0.008634,
+    "peak": false,
+    "usage_source": "session_v4",
+    "usage_missing": false
+  }
+}
