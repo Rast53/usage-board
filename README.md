@@ -158,7 +158,7 @@ The repull contract is checked by `deploy/check-pull-policy.sh` and by
 - `GET /api/providers` — provider metadata
 - `GET /api/wallets` — all enabled providers
 - `GET /api/quota` — cached quota probes
-- `GET /api/pace` — quota pace vs calendar
+- `GET /api/pace` — quota pace vs calendar. Which windows exist per provider: [`docs/provider-windows-matrix.md`](docs/provider-windows-matrix.md)
 - `GET /api/spend-daily?days=N` — daily spend by provider from local
   `spend.jsonl` history (default 30, max 90)
 - `POST /api/refresh` — force a refresh
