@@ -7,6 +7,8 @@ rolling 5h window plus the two monthly meters (`limit_month_total` /
 `limit_month_code`). A weekly window is emitted only when `limit_7d` exists;
 otherwise `weekly` stays `None` and no null `weekly` record is exposed.
 
+PR: https://github.com/Rast53/usage-board/pull/11
+
 ## Done (this branch)
 
 - `app.py`:
