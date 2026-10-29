@@ -10,7 +10,7 @@ Supported providers (a card appears only for the keys you provide):
 |---|---|
 | Z.AI GLM Coding | 5-hour + weekly + MCP quotas |
 | Command Code GOAT | monthly credits + 5h / weekly windows |
-| Kimi Coding | weekly quota + 5h window |
+| Kimi Coding | 5h window + monthly total/code meters |
 | OpenCode Go | monthly remaining + 5h / weekly windows |
 | Cursor | plan total % + Cursor-model % + other-model % + per-model tokens (cycle) |
 | DeepSeek | balance + 24h/7d spend |
