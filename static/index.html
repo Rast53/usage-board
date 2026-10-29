@@ -576,13 +576,35 @@ function heroFor(w) {
     };
   }
   if (p === 'kimi') {
+    // Monthly meters keep their own detail rows: «месяц (всего)» / «месяц (code)».
+    const session = w.session || {};
     const week = w.weekly || {};
-    const rem = week.remaining_percent;
-    return {
-      value: rem != null ? (Math.round(Number(rem)) + '%') : '—',
-      caption: 'из недельной квоты',
-      plan: w.plan_label || 'Kimi',
-    };
+    const month = (w.monthly_total && w.monthly_total.used_percent != null)
+      ? w.monthly_total
+      : (w.monthly_code || {});
+    const plan = w.plan_label || 'Kimi';
+    if (session.remaining_percent != null) {
+      return {
+        value: Math.round(Number(session.remaining_percent)) + '%',
+        caption: '5 ч',
+        plan: plan,
+      };
+    }
+    if (week.remaining_percent != null) {
+      return {
+        value: Math.round(Number(week.remaining_percent)) + '%',
+        caption: 'из недельной квоты',
+        plan: plan,
+      };
+    }
+    if (month.used_percent != null) {
+      return {
+        value: (Math.round(Number(month.used_percent) * 100) / 100) + '%',
+        caption: 'из месячной квоты',
+        plan: plan,
+      };
+    }
+    return { value: '—', caption: 'нет доступных окон', plan: plan };
   }
   if (p === 'opencode-go') {
     const month = w.monthly || {};
@@ -844,7 +866,19 @@ function renderKimiCard(w) {
       { key: 'weekly', label: 'неделя', window: 'неделя' },
     ],
     details: function(card) {
-      return detailsSimple(card, '<div class="details-section">План</div><div class="details-row"><span>label</span><span>' + escapeHtml(String(card.plan_label || 'Kimi')) + '</span></div>', 'GET /coding/v1/usages');
+      function monthRow(label, meter) {
+        if (!meter || (meter.used_percent == null && meter.next_reset_at == null)) return '';
+        const used = meter.used_percent != null ? (Math.round(Number(meter.used_percent) * 100) / 100) + '%' : '—';
+        const reset = meter.next_reset_at ? (' · сброс ' + fmtDateShort(meter.next_reset_at)) : '';
+        return '<div class="details-row"><span>' + label + '</span><span class="muted">' + escapeHtml(used + ' израсходовано' + reset) + '</span></div>';
+      }
+      return detailsSimple(card,
+        '<div class="details-section">План</div>' +
+        '<div class="details-row"><span>label</span><span>' + escapeHtml(String(card.plan_label || 'Kimi')) + '</span></div>' +
+        '<div class="details-section">Месячные метры</div>' +
+        monthRow('месяц (всего)', card.monthly_total || {}) +
+        monthRow('месяц (code)', card.monthly_code || {}),
+        'GET /coding/v1/usages');
     },
   });
 }
