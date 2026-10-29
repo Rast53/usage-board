@@ -94,6 +94,7 @@
   .pace-pill.ok { color: var(--green); border-color: rgba(63,185,80,0.35); background: rgba(63,185,80,0.08); }
   .pace-pill.warn { color: var(--yellow); border-color: rgba(210,153,34,0.35); background: rgba(210,153,34,0.08); }
   .pace-pill.danger { color: var(--red); border-color: rgba(248,81,73,0.35); background: rgba(248,81,73,0.08); }
+  .pace-pill.na { color: var(--muted); border-color: var(--border); background: transparent; }
   .stat-card {
     background: var(--card); border: 1px solid var(--border);
     border-radius: 14px; padding: 14px 16px;
@@ -812,6 +813,7 @@ function renderProviderCard(w, spec) {
   (spec.windows || []).forEach(function(win) {
     bars += allotmentBar(win.label, w[win.key] || {}, win.window);
   });
+  if (typeof spec.afterBars === 'function') bars += spec.afterBars(w);
   if (spec.creditsBar) {
     bars += openrouterCreditsBar(w);
     bars += openrouterKeyLimitBar(w);
@@ -865,6 +867,23 @@ function renderKimiCard(w) {
       { key: 'session', label: 'короткий', window: '5ч' },
       { key: 'weekly', label: 'неделя', window: 'неделя' },
     ],
+    afterBars: function(card) {
+      function meter(label, m) {
+        if (!m || m.used_percent == null) return '';
+        const used = Math.round(Number(m.used_percent) * 100) / 100;
+        const width = Math.max(0, Math.min(100, Number(m.used_percent)));
+        let cls = 'ok';
+        if (width >= 90) cls = 'bad';
+        else if (width > 50) cls = 'warn';
+        return '<div class="allot">' +
+          '<div class="allot-head"><span class="allot-label">' + escapeHtml(label) + '</span>' +
+          '<span class="allot-pct">' + escapeHtml(String(used)) + '%</span></div>' +
+          '<div class="bar ' + cls + '"><span style="width:' + width + '%"></span></div>' +
+        '</div>';
+      }
+      return meter('месяц (всего)', card.monthly_total || {}) +
+        meter('месяц (code)', card.monthly_code || {});
+    },
     details: function(card) {
       function monthRow(label, meter) {
         if (!meter || (meter.used_percent == null && meter.next_reset_at == null)) return '';
@@ -1127,25 +1146,9 @@ function renderStats(data) {
     '<div class="stat-card ' + statClass + '"><div class="stat-k">Требует внимания</div><div class="stat-v ' + (attention > 0 ? 'bad-text' : '') + '">' + attention + '</div><div class="stat-sub">' + escapeHtml(attSub) + '</div></div>';
 }
 
-/* ── Quota pace (server computes the rule; JS only renders) ── */
+/* ── Quota pace (server computes the rule and the colors; JS only renders) ── */
 const PACE_STALE_SECONDS = 600;
 const PACE_TOOLTIP = 'локальная оценка обгона линейного темпа, не официальный таймер провайдера';
-const PACE_COLORS = {
-  zai: '#38bdf8',
-  'zai-main': '#38bdf8',
-  commandcode: '#fb923c',
-  'commandcode-main': '#fb923c',
-  kimi: '#f472b6',
-  'kimi-main': '#f472b6',
-  'opencode-go': '#c084fc',
-  'opencode-go-main': '#c084fc'
-};
-/* Cursor emits two monthly lanes under one provider, so they carry a lane
-   label; give each label its own colour to keep the two dots apart. */
-const PACE_LANE_COLORS = {
-  'Cursor-модели': '#22d3ee',
-  'другие модели': '#f59e0b'
-};
 const PACE_LABELS = {
   'zai-main': 'z.ai',
   zai: 'z.ai',
@@ -1165,20 +1168,14 @@ function paceProviderLabel(id) {
   if (PACE_LABELS[id]) return PACE_LABELS[id];
   return String(id || '').replace(/-main$/, '') || id;
 }
-function paceProviderColor(id) {
-  return PACE_COLORS[id] || '#8b9bb0';
-}
-/* A lane may carry its own label (Cursor's two monthly meters); fall back to
-   the provider name/colour for every other lane. */
+/* A lane may carry its own label («provider · meter»); a single window falls
+   back to the provider name. Color is the hex the server already chose. */
 function paceLaneLabel(row) {
   if (row && row.lane && row.lane.label) return row.lane.label;
   return paceProviderLabel(row && row.provider);
 }
 function paceLaneColor(row) {
-  if (row && row.lane && row.lane.label && PACE_LANE_COLORS[row.lane.label]) {
-    return PACE_LANE_COLORS[row.lane.label];
-  }
-  return paceProviderColor(row && row.provider);
+  return (row && row.lane && row.lane.color) || '#8b9bb0';
 }
 function fmtResetMsk(v) {
   const d = parseDate(v);
@@ -1194,6 +1191,9 @@ function fmtResetMsk(v) {
   return map.day + '.' + map.month + ' ' + map.hour + ':' + map.minute + ' МСК';
 }
 function formatPacePill(lane) {
+  if (lane && lane.pace === 'n/a') {
+    return { text: 'сброс не сообщается', cls: 'na' };
+  }
   if (!lane || lane.pace === 'ok') {
     return { text: 'темп ok', cls: 'ok' };
   }
@@ -1227,6 +1227,9 @@ function renderPaceSvg(rows) {
   const x0 = xOf(0), y0 = yOf(0), x1 = xOf(100), y1 = yOf(100);
   let dots = '';
   rows.forEach(function(row) {
+    // A lane with no reset has norm_percent null. Number(null) || 0 would pin
+    // the dot to the origin, so the marker is omitted entirely.
+    if (!row.lane || row.lane.norm_percent == null) return;
     const color = paceLaneColor(row);
     const cx = xOf(row.lane.norm_percent);
     const cy = yOf(row.lane.used_percent);
@@ -1256,21 +1259,19 @@ function renderPaceSvg(rows) {
       '" text-anchor="end" fill="#3d4f66" font-size="9">100</text>' +
     '</svg>';
 }
-function renderPaceColumn(title, windowKey, accounts) {
+function renderPaceColumn(title, windowKey, accounts, resets) {
   const rows = lanesForWindow(accounts, windowKey);
-  const resets = [];
-  const seen = {};
-  rows.forEach(function(row) {
-    const key = row.lane.reset_at || '';
-    if (key && !seen[key]) { seen[key] = true; resets.push(key); }
+  const resetRows = (resets || []).filter(function(item) {
+    return item && item.reset_at;
   });
   let resetHtml = '';
-  if (resets.length === 1) {
-    resetHtml = '<div class="pace-reset">сброс: ' + escapeHtml(fmtResetMsk(resets[0])) + '</div>';
-  } else if (resets.length > 1) {
-    resetHtml = rows.map(function(row) {
-      return '<div class="pace-reset">' + escapeHtml(paceLaneLabel(row)) +
-        ' сброс: ' + escapeHtml(fmtResetMsk(row.lane.reset_at)) + '</div>';
+  if (resetRows.length === 1) {
+    resetHtml = '<div class="pace-reset">сброс: ' + escapeHtml(fmtResetMsk(resetRows[0].reset_at)) + '</div>';
+  } else if (resetRows.length > 1) {
+    resetHtml = resetRows.map(function(item) {
+      const name = item.label || item.provider || '';
+      return '<div class="pace-reset">' + escapeHtml(name) +
+        ' сброс: ' + escapeHtml(fmtResetMsk(item.reset_at)) + '</div>';
     }).join('');
   }
   const legend = rows.map(function(row) {
@@ -1305,12 +1306,17 @@ function renderPacePanel(data) {
     ? '<div class="pace-note">без оконных лимитов: ' +
       escapeHtml(data.no_window.map(paceProviderLabel).join(', ')) + '</div>'
     : '';
+  const windows = data.windows || {};
+  function resetsOf(key) {
+    const block = windows[key] || {};
+    return block.resets || [];
+  }
   return '<div class="pace-panel">' +
     '<div class="pace-caption">норма vs факт · выше диагонали — быстрее календаря</div>' +
     '<div class="pace-plots">' +
-      renderPaceColumn('5-часовое окно', '5h', data.accounts) +
-      renderPaceColumn('неделя', 'weekly', data.accounts) +
-      renderPaceColumn('месяц', 'monthly', data.accounts) +
+      renderPaceColumn('5-часовое окно', '5h', data.accounts, resetsOf('5h')) +
+      renderPaceColumn('неделя', 'weekly', data.accounts, resetsOf('weekly')) +
+      renderPaceColumn('месяц', 'monthly', data.accounts, resetsOf('monthly')) +
     '</div>' +
     note +
   '</div>';
