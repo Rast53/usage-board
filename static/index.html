@@ -576,6 +576,7 @@ function heroFor(w) {
     };
   }
   if (p === 'kimi') {
+    // Monthly meters keep their own detail rows: «месяц (всего)» / «месяц (code)».
     const session = w.session || {};
     const week = w.weekly || {};
     const month = (w.monthly_total && w.monthly_total.used_percent != null)
