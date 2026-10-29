@@ -113,15 +113,43 @@ PACE_WINDOW_SPECS: tuple[tuple[str, str, int | None], ...] = (
 # Cursor publishes no 5h/weekly windows: one billing cycle carries two meters
 # (Cursor-model % and other-model %) that burn down over the same reset. They are
 # exposed as two labelled "monthly" pace lanes so the panel shows both meters.
+# The label is «<provider> · <meter>» so the legend names the provider itself.
 PACE_CURSOR_WINDOW_SPECS: tuple[tuple[str, str], ...] = (
-    ("cursor_models", "Cursor-модели"),
-    ("other_models", "другие модели"),
+    ("cursor_models", "cursor · модели"),
+    ("other_models", "cursor · другие"),
 )
 # Kimi exposes monthly meters *in addition to* its rolling 5h/weekly windows.
+# Single windows stay unlabeled (the client prints the provider name); only the
+# extra meters carry «<provider> · <meter>».
 PACE_KIMI_MONTHLY_WINDOW_SPECS: tuple[tuple[str, str], ...] = (
-    ("monthly_total", "месяц (всего)"),
-    ("monthly_code", "месяц (code)"),
+    ("monthly_total", "kimi · всего"),
+    ("monthly_code", "kimi · code"),
 )
+# Window keys of /api/pace, in column order. Each one carries resets[].
+PACE_WINDOW_KEYS: tuple[str, ...] = ("5h", "weekly", "monthly")
+# One base color per known provider. The same hex is the step-0 shade in every
+# column; a second meter in the same column gets pace_shade(base, 1).
+PACE_COLORS: dict[str, str] = {
+    "deepseek": "#3b82f6",
+    "openrouter": "#10b981",
+    "zai": "#38bdf8",
+    "commandcode": "#fb923c",
+    "kimi": "#f472b6",
+    "opencode-go": "#c084fc",
+    "cursor": "#22d3ee",
+}
+PACE_COLOR_FALLBACK = "#8b9bb0"
+# Legend name for a provider when a lane has no meter label. z.ai is the only
+# slug whose visible name is not the slug itself.
+PACE_PROVIDER_LABELS: dict[str, str] = {
+    "deepseek": "deepseek",
+    "openrouter": "openrouter",
+    "zai": "z.ai",
+    "commandcode": "commandcode",
+    "kimi": "kimi",
+    "opencode-go": "opencode-go",
+    "cursor": "cursor",
+}
 # Published plan grants/caps (docs 2026-08-25). monthlyCredits on the wire is remaining, not total.
 COMMANDCODE_PLANS: dict[str, dict[str, Any]] = {
     "individual-go": {"label": "Go", "monthly_credits": 10.0, "session_cap": 3.0, "weekly_cap": 6.0},
@@ -4672,6 +4700,91 @@ def compute_pace_data_age_seconds(probed_at: Any, now: datetime) -> int | None:
     return max(0, int(round((now_dt - probed_dt).total_seconds())))
 
 
+def pace_shade(base: str, step: int) -> str:
+    """Return a hex shade of ``base``.
+
+    Step 0 is the base itself (lowercased ``#rrggbb``). Each further step mixes
+    32% toward white so a second meter stays in the provider's family and stays
+    distinct from the first. The client does not recompute this.
+    """
+    text = str(base).strip()
+    if text.startswith("#"):
+        text = text[1:]
+    if len(text) != 6:
+        return str(base)
+    try:
+        red = int(text[0:2], 16)
+        green = int(text[2:4], 16)
+        blue = int(text[4:6], 16)
+    except ValueError:
+        return str(base)
+    if step <= 0:
+        return f"#{text.lower()}"
+    toward = min(0.85, 0.32 * step)
+
+    def mix(channel: int) -> int:
+        return max(0, min(255, round(channel + (255 - channel) * toward)))
+
+    return f"#{mix(red):02x}{mix(green):02x}{mix(blue):02x}"
+
+
+def _pace_provider_slug(provider_key: str) -> str:
+    key = str(provider_key)
+    suffix = "-main"
+    if key.endswith(suffix):
+        return key[: -len(suffix)]
+    return key
+
+
+def _stamp_pace_color(lane: dict[str, Any], slug: str, steps: dict[str, int]) -> None:
+    """Paint ``lane`` with the provider base or the next shade in this window.
+
+    The first lane of a provider in a window is step 0, so the provider color
+    is the same in every column. A second meter in that window is step 1.
+    """
+    window = str(lane.get("window") or "")
+    step = steps.get(window, 0)
+    steps[window] = step + 1
+    base = PACE_COLORS.get(slug, PACE_COLOR_FALLBACK)
+    lane["color"] = pace_shade(base, step)
+
+
+def _pace_window_resets(
+    accounts: list[dict[str, Any]],
+) -> dict[str, dict[str, list[dict[str, str]]]]:
+    """One reset row per provider per window, in lane order.
+
+    Meters of the same provider collapse (they share a reset). A lane with
+    ``reset_at`` null is a visible bar but not a reset row.
+    """
+    grouped: dict[str, list[dict[str, str]]] = {name: [] for name in PACE_WINDOW_KEYS}
+    seen: dict[str, set[str]] = {name: set() for name in PACE_WINDOW_KEYS}
+    for account in accounts:
+        slug = _pace_provider_slug(str(account.get("provider") or ""))
+        label = PACE_PROVIDER_LABELS.get(slug, slug)
+        lanes = account.get("lanes") or []
+        if not isinstance(lanes, list):
+            continue
+        for lane in lanes:
+            if not isinstance(lane, dict):
+                continue
+            window = str(lane.get("window") or "")
+            if window not in grouped:
+                continue
+            reset_at = lane.get("reset_at")
+            if not reset_at or slug in seen[window]:
+                continue
+            seen[window].add(slug)
+            grouped[window].append(
+                {
+                    "provider": slug,
+                    "label": label,
+                    "reset_at": str(reset_at),
+                }
+            )
+    return {name: {"resets": grouped[name]} for name in PACE_WINDOW_KEYS}
+
+
 def compute_pace_lane(
     window: str,
     window_minutes: int,
@@ -4682,12 +4795,26 @@ def compute_pace_lane(
     if not isinstance(window_data, dict):
         return None
     used_percent = _as_float(window_data.get("used_percent"))
-    reset_dt = parse_pace_datetime(window_data.get("next_reset_at"))
-    if used_percent is None or reset_dt is None:
+    if used_percent is None:
         return None
     now_dt = parse_pace_datetime(now)
     if now_dt is None:
         return None
+    reset_dt = parse_pace_datetime(window_data.get("next_reset_at"))
+    if reset_dt is None:
+        # used_percent is known but the provider did not report a reset
+        # (z.ai 5h does this). The bar is drawn; the norm axis is not.
+        return {
+            "window": window,
+            "window_minutes": window_minutes,
+            "used_percent": used_percent,
+            "norm_percent": None,
+            "delta_pp": None,
+            "pace": "n/a",
+            "cooldown_minutes": None,
+            "reset_at": None,
+            "data_age_seconds": compute_pace_data_age_seconds(probed_at, now_dt),
+        }
     norm_percent = compute_pace_norm_percent(reset_dt, window_minutes, now_dt)
     delta_pp = used_percent - norm_percent
     return {
@@ -4751,6 +4878,8 @@ def build_pace_payload(
             no_window.append(str(key))
             continue
         probed_at = acc.get("probed_at")
+        slug = _pace_provider_slug(str(key))
+        color_steps: dict[str, int] = {}
         lanes: list[dict[str, Any]] = []
         if str(key) in ("cursor", "cursor-main"):
             # Both Cursor meters share one billing cycle, so they are emitted as
@@ -4774,6 +4903,7 @@ def build_pace_payload(
                 )
                 if lane is not None:
                     lane["label"] = label
+                    _stamp_pace_color(lane, slug, color_steps)
                     lanes.append(lane)
         else:
             for cache_key, window_label, minutes in PACE_WINDOW_SPECS:
@@ -4795,6 +4925,7 @@ def build_pace_payload(
                     probed_at,
                 )
                 if lane is not None:
+                    _stamp_pace_color(lane, slug, color_steps)
                     lanes.append(lane)
             if str(key) in ("kimi", "kimi-main"):
                 # Kimi keeps its rolling 5h/weekly lanes and adds two monthly
@@ -4817,6 +4948,7 @@ def build_pace_payload(
                     )
                     if lane is not None:
                         lane["label"] = label
+                        _stamp_pace_color(lane, slug, color_steps)
                         lanes.append(lane)
         if lanes:
             accounts_out.append({"provider": str(key), "lanes": lanes})
@@ -4824,6 +4956,7 @@ def build_pace_payload(
             no_window.append(str(key))
     return {
         "accounts": accounts_out,
+        "windows": _pace_window_resets(accounts_out),
         "no_window": no_window,
         "server_now": _pace_iso(now_dt),
     }
