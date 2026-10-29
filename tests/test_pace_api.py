@@ -297,6 +297,36 @@ def test_cursor_without_meters_falls_back_to_no_window() -> None:
     assert "cursor-main" in payload["no_window"]
 
 
+# --- Kimi: monthly meters are additive to its 5h/weekly lanes ---------------
+
+
+def test_kimi_monthly_meters_add_lanes_without_moving_baseline() -> None:
+    cache = _quota_cache()
+    cache["accounts"]["kimi-main"]["monthly_total"] = _window(
+        0.09, "2026-11-29T00:00:00Z"
+    )
+    cache["accounts"]["kimi-main"]["monthly_code"] = _window(
+        0.09, "2026-11-29T00:00:00Z"
+    )
+    payload = app_module.build_pace_payload(cache, now=NOW)
+
+    kimi = _account(payload, "kimi-main")
+    assert kimi is not None
+    lanes = kimi["lanes"]
+    # Existing generic sweep is preserved, then the monthly meters are added.
+    assert lanes[:2] == BASELINE_LANES["kimi-main"]
+    assert [lane["window"] for lane in lanes] == [
+        "5h",
+        "weekly",
+        "monthly",
+        "monthly",
+    ]
+    monthly = {lane["label"]: lane for lane in lanes[2:]}
+    assert set(monthly) == {"месяц (всего)", "месяц (code)"}
+    assert all(lane["used_percent"] == 0.09 for lane in monthly.values())
+    assert all(lane["window_minutes"] == 44640 for lane in monthly.values())
+
+
 # --- Negative: every other provider is untouched ----------------------------
 
 

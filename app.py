@@ -117,12 +117,11 @@ PACE_CURSOR_WINDOW_SPECS: tuple[tuple[str, str], ...] = (
     ("cursor_models", "Cursor-модели"),
     ("other_models", "другие модели"),
 )
-# Published weekly request quotas (Kimi Code membership docs 2026-08-25). 5h cap is 200 for all tiers.
-KIMI_WEEKLY_PLANS: dict[float, str] = {
-    1024.0: "Andante",
-    2048.0: "Moderato",
-    7168.0: "Allegretto",
-}
+# Kimi exposes monthly meters *in addition to* its rolling 5h/weekly windows.
+PACE_KIMI_MONTHLY_WINDOW_SPECS: tuple[tuple[str, str], ...] = (
+    ("monthly_total", "месяц (всего)"),
+    ("monthly_code", "месяц (code)"),
+)
 # Published plan grants/caps (docs 2026-08-25). monthlyCredits on the wire is remaining, not total.
 COMMANDCODE_PLANS: dict[str, dict[str, Any]] = {
     "individual-go": {"label": "Go", "monthly_credits": 10.0, "session_cap": 3.0, "weekly_cap": 6.0},
@@ -3257,8 +3256,38 @@ def _kimi_window_minutes(window: Any) -> float | None:
 
 
 def _parse_kimi_quota(raw: Any, kind: str, label: str) -> dict[str, Any] | None:
+    """Normalize one Kimi window from absolute counts or a ``used_ratio``.
+
+    ``limits[].detail`` carries absolute ``limit``/``used``/``remaining``
+    numbers; the ``usages`` map carries only ``used_ratio`` (0..1) plus a reset
+    time. Both shapes feed the same card and agent-facing wallet.
+    """
     if not isinstance(raw, dict):
         return None
+    reset_at = _kimi_reset_iso(_pick(raw, "resetTime", "reset_time", "reset_at", "resetAt"))
+    name = _pick(raw, "name")
+    ratio = _as_float(_pick(raw, "used_ratio", "usedRatio"))
+    if ratio is not None:
+        used_pct = round(ratio * 100.0, 2)
+        rem_pct = round(max(0.0, 100.0 - used_pct), 2)
+        summary = (
+            f"{used_pct:g}% used ({label})"
+            if kind.startswith("monthly")
+            else f"{rem_pct:.0f}% left ({label})"
+        )
+        if isinstance(name, str) and name.strip():
+            summary = f"{name.strip()} · {summary}"
+        return {
+            "kind": kind,
+            "used": None,
+            "cap": None,
+            "remaining": None,
+            "used_percent": used_pct,
+            "remaining_percent": rem_pct,
+            "next_reset_at": reset_at,
+            "name": name if isinstance(name, str) else None,
+            "summary": summary,
+        }
     cap = _as_float(_pick(raw, "limit", "cap", "totalQuota", "total_quota"))
     used = _as_float(_pick(raw, "used", "usage"))
     remaining = _as_float(_pick(raw, "remaining"))
@@ -3274,8 +3303,6 @@ def _parse_kimi_quota(raw: Any, kind: str, label: str) -> dict[str, Any] | None:
         remaining = max(0.0, cap - used)
     used_pct = round((used / cap) * 100.0, 2)
     rem_pct = round(max(0.0, (remaining / cap) * 100.0), 2)
-    reset_at = _kimi_reset_iso(_pick(raw, "resetTime", "reset_time", "reset_at", "resetAt"))
-    name = _pick(raw, "name")
     summary = f"{rem_pct:.0f}% left ({label}) · {remaining:.0f} / {cap:.0f}"
     if isinstance(name, str) and name.strip():
         summary = f"{name.strip()} · {summary}"
@@ -3306,15 +3333,6 @@ def _kimi_fresh_session() -> dict[str, Any]:
     }
 
 
-def _kimi_plan_label(weekly_cap: float | None) -> str | None:
-    if weekly_cap is None:
-        return None
-    for cap, label in KIMI_WEEKLY_PLANS.items():
-        if abs(weekly_cap - cap) <= 0.05:
-            return label
-    return None
-
-
 def _kimi_api_error(data: Any, err: str | None, st: int | None) -> str:
     if isinstance(data, dict):
         err_obj = data.get("error")
@@ -3330,8 +3348,60 @@ def _kimi_api_error(data: Any, err: str | None, st: int | None) -> str:
     return f"usages API: {st} {err or data}".strip()
 
 
+def parse_kimi_usages(payload: Any) -> dict[str, Any]:
+    """Parse GET /coding/v1/usages into the windows the API actually returns.
+
+    ``limits[]`` carries the absolute rolling 5h window; the ``usages`` map
+    carries ratio-only windows (5h fallback, optional 7d, monthly total/code).
+    A window missing from the payload stays ``None`` — no synthetic empty dict.
+    """
+    parsed: dict[str, Any] = {
+        "session": None,
+        "weekly": None,
+        "monthly_total": None,
+        "monthly_code": None,
+    }
+    if not isinstance(payload, dict):
+        return parsed
+    usages = payload.get("usages")
+    if not isinstance(usages, dict):
+        usages = {}
+    limits_raw = payload.get("limits")
+    if not isinstance(limits_raw, list):
+        limits_raw = []
+
+    session = None
+    saw_five_hour = False
+    for item in limits_raw:
+        if not isinstance(item, dict):
+            continue
+        minutes = _kimi_window_minutes(item.get("window"))
+        detail = item.get("detail") if isinstance(item.get("detail"), dict) else item
+        candidate = _parse_kimi_quota(detail, "session", "5h")
+        if minutes is not None and abs(minutes - 300.0) <= 0.5:
+            saw_five_hour = True
+            session = candidate or _kimi_fresh_session()
+            break
+        if session is None and candidate:
+            session = candidate
+    if session is None and not limits_raw:
+        session = _parse_kimi_quota(usages.get("limit_5h"), "session", "5h")
+    if session is None and saw_five_hour:
+        session = _kimi_fresh_session()
+
+    parsed["session"] = session
+    parsed["weekly"] = _parse_kimi_quota(usages.get("limit_7d"), "weekly", "week")
+    parsed["monthly_total"] = _parse_kimi_quota(
+        usages.get("limit_month_total"), "monthly_total", "month total"
+    )
+    parsed["monthly_code"] = _parse_kimi_quota(
+        usages.get("limit_month_code"), "monthly_code", "month code"
+    )
+    return parsed
+
+
 def probe_kimi_usage() -> dict[str, Any]:
-    """Fetch Kimi Coding weekly quota + rolling 5h window.
+    """Fetch Kimi Coding windows: rolling 5h, optional weekly, monthly meters.
 
     Primary: GET https://api.kimi.com/coding/v1/usages (Bearer Kimi Code API key).
     Cookie GetUsages / Moonshot Open Platform are not used.
@@ -3347,6 +3417,8 @@ def probe_kimi_usage() -> dict[str, Any]:
         "plan_label": None,
         "session": None,
         "weekly": None,
+        "monthly_total": None,
+        "monthly_code": None,
         "error": None,
         "source": "kimi-coding-v1-usages",
     }
@@ -3374,43 +3446,25 @@ def probe_kimi_usage() -> dict[str, Any]:
     payload = data.get("data") if isinstance(data.get("data"), dict) else data
     if not isinstance(payload, dict):
         payload = data
-    usage_raw = payload.get("usage") if isinstance(payload.get("usage"), dict) else None
-    weekly = _parse_kimi_quota(usage_raw, "weekly", "week")
-    limits_raw = payload.get("limits")
-    if not isinstance(limits_raw, list):
-        limits_raw = []
-
-    session = None
-    saw_five_hour = False
-    for item in limits_raw:
-        if not isinstance(item, dict):
-            continue
-        minutes = _kimi_window_minutes(item.get("window"))
-        detail = item.get("detail") if isinstance(item.get("detail"), dict) else item
-        parsed = _parse_kimi_quota(detail, "session", "5h")
-        if minutes is not None and abs(minutes - 300.0) <= 0.5:
-            saw_five_hour = True
-            session = parsed or _kimi_fresh_session()
-            break
-        if session is None and parsed:
-            session = parsed
-    if session is None and saw_five_hour:
-        session = _kimi_fresh_session()
-
-    plan_label = _kimi_plan_label(weekly["cap"] if weekly else None)
+    windows = parse_kimi_usages(payload)
 
     result["ok"] = True
     result["status"] = "active"
-    result["plan_label"] = plan_label
-    result["session"] = session
-    result["weekly"] = weekly
+    result["session"] = windows["session"]
+    result["weekly"] = windows["weekly"]
+    result["monthly_total"] = windows["monthly_total"]
+    result["monthly_code"] = windows["monthly_code"]
 
     parts = []
-    if weekly:
-        parts.append(weekly["summary"])
-    if session:
-        parts.append(session["summary"])
-    label = plan_label or "Kimi Coding"
+    for window in (
+        windows["session"],
+        windows["weekly"],
+        windows["monthly_total"],
+        windows["monthly_code"],
+    ):
+        if window:
+            parts.append(window["summary"])
+    label = result["plan_label"] or "Kimi Coding"
     result["remaining_summary"] = f"{label} · " + " · ".join(parts) if parts else str(label)
     return result
 
@@ -3428,7 +3482,9 @@ def build_kimi_wallet(probe: dict[str, Any] | None) -> dict[str, Any] | None:
         "ok": bool(probe.get("ok")),
         "plan_label": probe.get("plan_label"),
         "session": probe.get("session") or {},
-        "weekly": probe.get("weekly") or {},
+        "weekly": probe.get("weekly"),
+        "monthly_total": probe.get("monthly_total"),
+        "monthly_code": probe.get("monthly_code"),
         "remaining_summary": probe.get("remaining_summary") or "",
         "error": probe.get("error"),
         "probed_at": probe.get("probed_at"),
@@ -4740,6 +4796,28 @@ def build_pace_payload(
                 )
                 if lane is not None:
                     lanes.append(lane)
+            if str(key) in ("kimi", "kimi-main"):
+                # Kimi keeps its rolling 5h/weekly lanes and adds two monthly
+                # meters on top, mirroring the extra fields in its wallet.
+                for cache_key, label in PACE_KIMI_MONTHLY_WINDOW_SPECS:
+                    window_data = acc.get(cache_key)
+                    if not isinstance(window_data, dict):
+                        continue
+                    resolved_minutes = compute_monthly_window_minutes(
+                        window_data.get("next_reset_at")
+                    )
+                    if resolved_minutes is None:
+                        continue
+                    lane = compute_pace_lane(
+                        "monthly",
+                        resolved_minutes,
+                        window_data,
+                        now_dt,
+                        probed_at,
+                    )
+                    if lane is not None:
+                        lane["label"] = label
+                        lanes.append(lane)
         if lanes:
             accounts_out.append({"provider": str(key), "lanes": lanes})
         else:
@@ -4784,6 +4862,8 @@ _PROVIDER_LIMIT_WINDOWS: dict[str, tuple[tuple[str, str, str, str], ...]] = {
     "kimi": (
         ("session", "session", "5h", "requests"),
         ("weekly", "weekly", "weekly", "requests"),
+        ("monthly_total", "monthly_total", "month total", "percent"),
+        ("monthly_code", "monthly_code", "month code", "percent"),
     ),
     "opencode-go": (
         ("session", "session", "5h", "usd"),

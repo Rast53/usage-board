@@ -4,6 +4,8 @@ No provider keys or network access required: the envelope is built from cached
 state, and provider failures must surface in "errors" rather than a 500.
 """
 
+import json
+from pathlib import Path
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -107,6 +109,43 @@ def test_limits_normalizes_quota_windows(monkeypatch) -> None:
     assert session["used"] == 1.0
     assert session["remaining"] == 2.0
     assert session["reset_at"] == "2026-01-01T05:00:00Z"
+
+
+def test_limits_kimi_exposes_monthly_meters_without_null_weekly(monkeypatch) -> None:
+    monkeypatch.setenv("PROVIDERS", "kimi")
+    payload = json.loads(
+        (Path(__file__).parent / "fixtures" / "kimi_usages_2026-10-28.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    windows = app_module.parse_kimi_usages(payload)
+    wallet = app_module.build_kimi_wallet(
+        {
+            "provider": "kimi",
+            "ok": True,
+            "status": "active",
+            "probed_at": "2026-10-28T14:24:00Z",
+            "source": "kimi-coding-v1-usages",
+            **windows,
+        }
+    )
+    state = {
+        "updated_at": "2026-10-28T14:24:00Z",
+        "providers": {},
+        "accounts": [],
+        "wallets": {"kimi": wallet},
+        "errors": [],
+    }
+    with patch.object(app_module, "_state", state):
+        body = _client().get("/api/limits").json()
+
+    limits = body["providers"]["kimi"]["limits"]
+    by_id = {limit["id"]: limit for limit in limits}
+    assert {"session", "monthly_total", "monthly_code"} <= set(by_id)
+    assert "weekly" not in by_id
+    assert by_id["monthly_total"]["used_percent"] == 0.09
+    assert by_id["monthly_code"]["used_percent"] == 0.09
+    assert all(limit["used_percent"] is not None for limit in limits)
 
 
 def test_limits_provider_error_goes_to_errors_not_500(monkeypatch) -> None:
