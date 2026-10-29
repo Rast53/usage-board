@@ -3,8 +3,9 @@
 Cursor has no 5h/weekly windows: its dashboard exposes two meters that burn
 down over the same billing cycle (Cursor-model % and other-model %). The pace
 payload must surface both as labelled ``monthly`` lanes for the ``cursor-main``
-account, while every other provider's lanes stay byte-identical and
-deepseek/openrouter stay in ``no_window``.
+account. Numeric pace fields of the other providers stay on the captured
+baseline; each lane also carries a server ``color``. deepseek/openrouter stay
+in ``no_window``.
 
 No network access: the payload is built from a static ``quota_cache`` fixture.
 """
@@ -105,6 +106,7 @@ BASELINE_LANES = {
             "cooldown_minutes": 0,
             "reset_at": "2026-09-17T15:00:00Z",
             "data_age_seconds": 60,
+            "color": "#38bdf8",
         },
         {
             "window": "weekly",
@@ -116,6 +118,7 @@ BASELINE_LANES = {
             "cooldown_minutes": 2016,
             "reset_at": "2026-09-25T12:27:11Z",
             "data_age_seconds": 60,
+            "color": "#38bdf8",
         },
     ],
     "commandcode-main": [
@@ -129,6 +132,7 @@ BASELINE_LANES = {
             "cooldown_minutes": 30,
             "reset_at": "2026-09-17T16:00:00Z",
             "data_age_seconds": 120,
+            "color": "#fb923c",
         },
         {
             "window": "weekly",
@@ -140,6 +144,7 @@ BASELINE_LANES = {
             "cooldown_minutes": 4032,
             "reset_at": "2026-09-25T12:27:11Z",
             "data_age_seconds": 120,
+            "color": "#fb923c",
         },
         {
             "window": "monthly",
@@ -151,6 +156,7 @@ BASELINE_LANES = {
             "cooldown_minutes": 0,
             "reset_at": "2026-09-25T12:27:11Z",
             "data_age_seconds": 120,
+            "color": "#fb923c",
         },
     ],
     "kimi-main": [
@@ -164,6 +170,7 @@ BASELINE_LANES = {
             "cooldown_minutes": 0,
             "reset_at": "2026-09-17T16:00:00Z",
             "data_age_seconds": 180,
+            "color": "#f472b6",
         },
         {
             "window": "weekly",
@@ -175,6 +182,7 @@ BASELINE_LANES = {
             "cooldown_minutes": 2520,
             "reset_at": "2026-09-25T12:27:11Z",
             "data_age_seconds": 180,
+            "color": "#f472b6",
         },
     ],
     "opencode-go-main": [
@@ -188,6 +196,7 @@ BASELINE_LANES = {
             "cooldown_minutes": 0,
             "reset_at": "2026-09-17T16:00:00Z",
             "data_age_seconds": 240,
+            "color": "#c084fc",
         },
         {
             "window": "weekly",
@@ -199,6 +208,7 @@ BASELINE_LANES = {
             "cooldown_minutes": 3528,
             "reset_at": "2026-09-25T12:27:11Z",
             "data_age_seconds": 240,
+            "color": "#c084fc",
         },
         {
             "window": "monthly",
@@ -210,6 +220,7 @@ BASELINE_LANES = {
             "cooldown_minutes": 0,
             "reset_at": "2026-09-25T12:27:11Z",
             "data_age_seconds": 240,
+            "color": "#c084fc",
         },
     ],
 }
@@ -237,10 +248,10 @@ def test_cursor_gets_two_monthly_lanes_with_labels() -> None:
     assert {lane["window"] for lane in lanes} == {"monthly"}
 
     by_label = {lane["label"]: lane for lane in lanes}
-    assert set(by_label) == {"Cursor-модели", "другие модели"}
+    assert set(by_label) == {"cursor · модели", "cursor · другие"}
 
-    cursor_models = by_label["Cursor-модели"]
-    other_models = by_label["другие модели"]
+    cursor_models = by_label["cursor · модели"]
+    other_models = by_label["cursor · другие"]
     assert cursor_models["used_percent"] == 86.7
     assert other_models["used_percent"] == 74.18
     assert cursor_models["reset_at"] == CURSOR_RESET
@@ -280,9 +291,9 @@ def test_cursor_simplified_fixture_uses_account_level_reset() -> None:
     assert cursor is not None
     assert "cursor-main" not in payload["no_window"]
     by_label = {lane["label"]: lane for lane in cursor["lanes"]}
-    assert set(by_label) == {"Cursor-модели", "другие модели"}
-    assert by_label["Cursor-модели"]["used_percent"] == 86.7
-    assert by_label["другие модели"]["used_percent"] == 74.18
+    assert set(by_label) == {"cursor · модели", "cursor · другие"}
+    assert by_label["cursor · модели"]["used_percent"] == 86.7
+    assert by_label["cursor · другие"]["used_percent"] == 74.18
     assert all(lane["reset_at"] == CURSOR_RESET for lane in cursor["lanes"])
 
 
@@ -322,7 +333,7 @@ def test_kimi_monthly_meters_add_lanes_without_moving_baseline() -> None:
         "monthly",
     ]
     monthly = {lane["label"]: lane for lane in lanes[2:]}
-    assert set(monthly) == {"месяц (всего)", "месяц (code)"}
+    assert set(monthly) == {"kimi · всего", "kimi · code"}
     assert all(lane["used_percent"] == 0.09 for lane in monthly.values())
     assert all(lane["window_minutes"] == 44640 for lane in monthly.values())
 
@@ -347,6 +358,11 @@ def test_pace_payload_on_empty_cache() -> None:
     payload = app_module.build_pace_payload(None, now=NOW)
     assert payload["accounts"] == []
     assert payload["no_window"] == []
+    assert payload["windows"] == {
+        "5h": {"resets": []},
+        "weekly": {"resets": []},
+        "monthly": {"resets": []},
+    }
 
 
 # --- Static: the rendered "месяц" column shows two Cursor dots --------------
@@ -366,7 +382,8 @@ MOCK_PACE = {
                     "cooldown_minutes": 5610.06,
                     "reset_at": "2026-09-25T12:27:11Z",
                     "data_age_seconds": 60,
-                    "label": "Cursor-модели",
+                    "label": "cursor · модели",
+                    "color": "#22d3ee",
                 },
                 {
                     "window": "monthly",
@@ -378,7 +395,8 @@ MOCK_PACE = {
                     "cooldown_minutes": 0,
                     "reset_at": "2026-09-25T12:27:11Z",
                     "data_age_seconds": 60,
-                    "label": "другие модели",
+                    "label": "cursor · другие",
+                    "color": app_module.pace_shade(app_module.PACE_COLORS["cursor"], 1),
                 },
             ],
         }
@@ -437,8 +455,249 @@ def test_monthly_column_renders_two_distinct_cursor_dots() -> None:
     # live after the "месяц" title.
     assert html.count("<circle") == 2
     assert html.index(">месяц<") < html.index("<circle")
-    assert "Cursor-модели" in html
-    assert "другие модели" in html
-    # Two distinct, non-default fills keep the dots visually apart.
-    assert "#22d3ee" in html
-    assert "#f59e0b" in html
+    assert "cursor · модели" in html
+    assert "cursor · другие" in html
+    # Two distinct fills come from the lane color the server already chose.
+    cursor_base = app_module.PACE_COLORS["cursor"]
+    cursor_shade = app_module.pace_shade(cursor_base, 1)
+    assert cursor_base in html
+    assert cursor_shade in html
+    assert cursor_base != cursor_shade
+
+
+KIMI_MONTHLY_RESET = "2026-11-29T00:00:00Z"
+CURSOR_MONTHLY_RESET = "2026-11-25T12:27:11Z"
+
+
+def _render_dashboard(body: str) -> str:
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not available")
+    script = _extract_dashboard_script()
+    prelude = (
+        "globalThis.document = {"
+        " getElementById: function(){ return { innerHTML: '', textContent: '',"
+        " style: {}, setAttribute: function(){}, getAttribute: function(){ return null; },"
+        " querySelector: function(){ return null; }, querySelectorAll: function(){ return []; } }; },"
+        " querySelector: function(){ return null; },"
+        " querySelectorAll: function(){ return []; }"
+        "};\n"
+        "globalThis.fetch = function(){ return Promise.reject(new Error('offline')); };\n"
+        "globalThis.setInterval = function(){ return 0; };\n"
+        "globalThis.window = globalThis;\n"
+    )
+    fd, path = tempfile.mkstemp(suffix=".js")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(prelude + script + body)
+        proc = subprocess.run(
+            [node, path], capture_output=True, text=True, timeout=30
+        )
+    finally:
+        os.unlink(path)
+    assert proc.returncode == 0, proc.stderr
+    return proc.stdout
+
+
+def _kimi_cursor_monthly_cache(*, include_opencode: bool) -> dict:
+    """Dedicated fixture: monthly lanes are only kimi and cursor (plus Go)."""
+    accounts: dict = {
+        "kimi-main": {
+            "probed_at": "2026-09-17T11:57:00Z",
+            "session": _window(15.0, "2026-09-17T16:00:00Z"),
+            "weekly": _window(25.0, "2026-09-24T00:00:00Z"),
+            "monthly_total": _window(0.09, KIMI_MONTHLY_RESET),
+            "monthly_code": _window(0.09, KIMI_MONTHLY_RESET),
+        },
+        "cursor-main": {
+            "probed_at": "2026-09-17T11:53:00Z",
+            "cursor_models": _window(86.7, CURSOR_MONTHLY_RESET),
+            "other_models": _window(74.18, CURSOR_MONTHLY_RESET),
+        },
+    }
+    if include_opencode:
+        accounts["opencode-go-main"] = {
+            "probed_at": "2026-09-17T11:56:00Z",
+            "session": _window(5.0, "2026-09-17T16:00:00Z"),
+            "weekly": _window(35.0, "2026-09-24T00:00:00Z"),
+            "monthly": _window(45.0, "2026-10-17T00:00:00Z"),
+        }
+    return {"accounts": accounts}
+
+
+def test_pace_resets_grouped_by_provider() -> None:
+    payload = app_module.build_pace_payload(
+        _kimi_cursor_monthly_cache(include_opencode=False), now=NOW
+    )
+    monthly = payload["windows"]["monthly"]["resets"]
+    assert [(row["provider"], row["label"], row["reset_at"]) for row in monthly] == [
+        ("kimi", "kimi", KIMI_MONTHLY_RESET),
+        ("cursor", "cursor", CURSOR_MONTHLY_RESET),
+    ]
+    assert len(monthly) == 2
+
+    with_go = app_module.build_pace_payload(
+        _kimi_cursor_monthly_cache(include_opencode=True), now=NOW
+    )
+    go_monthly = with_go["windows"]["monthly"]["resets"]
+    assert [row["provider"] for row in go_monthly] == ["kimi", "opencode-go", "cursor"]
+    assert len(go_monthly) == 3
+    assert len({row["reset_at"] for row in go_monthly}) == 3
+
+
+def test_pace_lane_labels_carry_provider() -> None:
+    cache = _quota_cache()
+    cache["accounts"]["kimi-main"]["monthly_total"] = _window(0.09, KIMI_MONTHLY_RESET)
+    cache["accounts"]["kimi-main"]["monthly_code"] = _window(0.09, KIMI_MONTHLY_RESET)
+    payload = app_module.build_pace_payload(cache, now=NOW)
+
+    kimi = _account(payload, "kimi-main")
+    assert kimi is not None
+    assert [lane["label"] for lane in kimi["lanes"] if lane["window"] == "monthly"] == [
+        "kimi · всего",
+        "kimi · code",
+    ]
+    assert all("label" not in lane for lane in kimi["lanes"] if lane["window"] != "monthly")
+
+    cursor = _account(payload, "cursor-main")
+    assert cursor is not None
+    assert [lane["label"] for lane in cursor["lanes"]] == [
+        "cursor · модели",
+        "cursor · другие",
+    ]
+
+    for provider in ("zai-main", "commandcode-main", "opencode-go-main"):
+        account = _account(payload, provider)
+        assert account is not None, provider
+        for lane in account["lanes"]:
+            assert "label" not in lane, (provider, lane["window"])
+
+    go = _account(payload, "opencode-go-main")
+    assert go is not None
+    go_monthly = [lane for lane in go["lanes"] if lane["window"] == "monthly"]
+    assert len(go_monthly) == 1
+    assert "label" not in go_monthly[0]
+
+    # A single window is captioned with the provider name, not a meter suffix.
+    if not shutil.which("node"):
+        return
+    panel = {
+        "accounts": [
+            {
+                "provider": "opencode-go-main",
+                "lanes": [
+                    {
+                        "window": "monthly",
+                        "used_percent": 45,
+                        "norm_percent": 10,
+                        "pace": "ok",
+                        "cooldown_minutes": 0,
+                        "reset_at": "2026-10-17T00:00:00Z",
+                        "color": "#c084fc",
+                    }
+                ],
+            }
+        ],
+        "windows": {
+            "5h": {"resets": []},
+            "weekly": {"resets": []},
+            "monthly": {
+                "resets": [
+                    {
+                        "provider": "opencode-go",
+                        "label": "opencode-go",
+                        "reset_at": "2026-10-17T00:00:00Z",
+                    }
+                ]
+            },
+        },
+        "no_window": [],
+    }
+    html = _render_dashboard(
+        ";(function(){\n"
+        "  var data = " + json.dumps(panel, ensure_ascii=False) + ";\n"
+        "  process.stdout.write(renderPacePanel(data));\n"
+        "})();\n"
+    )
+    assert "opencode-go" in html
+    assert "opencode-go ·" not in html
+
+
+def test_pace_unknown_reset_lane() -> None:
+    cache = {
+        "accounts": {
+            "zai-main": {
+                "probed_at": "2026-09-17T11:59:00Z",
+                "session": {
+                    "kind": "test-window",
+                    "used_percent": 12.5,
+                    "remaining_percent": 87.5,
+                    "next_reset_at": None,
+                    "summary": "12.5% used",
+                },
+            }
+        }
+    }
+    payload = app_module.build_pace_payload(cache, now=NOW)
+    zai = _account(payload, "zai-main")
+    assert zai is not None
+    assert [lane["window"] for lane in zai["lanes"]] == ["5h"]
+    lane = zai["lanes"][0]
+    assert lane == {
+        "window": "5h",
+        "window_minutes": 300,
+        "used_percent": 12.5,
+        "norm_percent": None,
+        "delta_pp": None,
+        "pace": "n/a",
+        "cooldown_minutes": None,
+        "reset_at": None,
+        "data_age_seconds": 60,
+        "color": app_module.PACE_COLORS["zai"],
+    }
+    assert "label" not in lane
+    assert payload["windows"]["5h"]["resets"] == []
+    assert all(
+        row["reset_at"]
+        for window in payload["windows"].values()
+        for row in window["resets"]
+    )
+
+    if not shutil.which("node"):
+        return
+    panel = {
+        "accounts": [
+            {
+                "provider": "zai-main",
+                "lanes": [
+                    {
+                        "window": "5h",
+                        "window_minutes": 300,
+                        "used_percent": 12.5,
+                        "norm_percent": None,
+                        "delta_pp": None,
+                        "pace": "n/a",
+                        "cooldown_minutes": None,
+                        "reset_at": None,
+                        "data_age_seconds": 60,
+                        "color": "#38bdf8",
+                    }
+                ],
+            }
+        ],
+        "windows": {
+            "5h": {"resets": []},
+            "weekly": {"resets": []},
+            "monthly": {"resets": []},
+        },
+        "no_window": [],
+    }
+    html = _render_dashboard(
+        ";(function(){\n"
+        "  var data = " + json.dumps(panel) + ";\n"
+        "  process.stdout.write(renderPacePanel(data));\n"
+        "})();\n"
+    )
+    assert "<circle" not in html
+    assert "сброс не сообщается" in html
+    assert "5-часовое окно" in html
